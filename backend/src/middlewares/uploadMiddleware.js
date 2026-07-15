@@ -2,7 +2,9 @@ const multer = require('multer');
 
 const DOCUMENT_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
+// 4MB per file — must stay under Vercel's 4.5MB serverless request-body
+// cap, or oversized uploads get a platform 413 instead of our JSON error.
+const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
 const makeUploader = (allowedMimeTypes, allowedLabel) =>
   multer({
@@ -27,7 +29,7 @@ const imageUpload = makeUploader(IMAGE_MIME_TYPES, 'JPG and PNG');
 const normalizeMulterError = (err, next) => {
   if (err instanceof multer.MulterError) {
     let message = err.message;
-    if (err.code === 'LIMIT_FILE_SIZE') message = 'File exceeds 5MB limit';
+    if (err.code === 'LIMIT_FILE_SIZE') message = 'File exceeds 4MB limit';
     if (err.code === 'LIMIT_UNEXPECTED_FILE') message = 'Too many files uploaded';
     const clean = new Error(message);
     clean.status = 400;
@@ -37,7 +39,7 @@ const normalizeMulterError = (err, next) => {
   return next(err);
 };
 
-/** Single document upload (jpg/png/pdf, 5MB) — used by /documents/upload. */
+/** Single document upload (jpg/png/pdf, 4MB) — used by /documents/upload. */
 const singleFile = (fieldName) => (req, res, next) => {
   documentUpload.single(fieldName)(req, res, (err) => {
     if (!err) return next();
@@ -45,7 +47,7 @@ const singleFile = (fieldName) => (req, res, next) => {
   });
 };
 
-/** Multi-image upload (jpg/png only, 5MB each) — used by property images. */
+/** Multi-image upload (jpg/png only, 4MB each) — used by property images. */
 const imagesArray = (fieldName, maxCount) => (req, res, next) => {
   imageUpload.array(fieldName, maxCount)(req, res, (err) => {
     if (!err) return next();

@@ -1,10 +1,15 @@
+const os = require('os');
 const path = require('path');
 const { createWorker } = require('tesseract.js');
 
 const OCR_TIMEOUT_MS = parseInt(process.env.OCR_TIMEOUT_MS, 10) || 15000;
 
-// Keep tesseract's downloaded language data out of the repo
-const CACHE_PATH = path.join(__dirname, '../../node_modules/.cache/tesseract');
+// Keep tesseract's downloaded language data out of the repo. On serverless
+// (Vercel) the deployment bundle is read-only — /tmp is the only writable
+// path, at the cost of re-downloading the language data on cold starts.
+const CACHE_PATH = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'tesseract')
+  : path.join(__dirname, '../../node_modules/.cache/tesseract');
 
 const withTimeout = (promise, ms) =>
   Promise.race([

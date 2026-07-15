@@ -4,21 +4,11 @@ import { getApiError } from '../api/client';
 import DocumentList from '../components/DocumentList';
 import { FormAlert, inputClass, labelClass } from '../components/AuthCard';
 import { DOCUMENT_TYPES, type DocumentType } from '../api/documentApi';
-
-const MAX_SIZE = 5 * 1024 * 1024;
-const ALLOWED_MIME = ['image/jpeg', 'image/png', 'application/pdf'];
+import { checkFile } from '../utils/fileValidation';
 
 // Fast client-side pre-check to avoid wasted uploads. UX only — the
 // backend re-validates type (via magic bytes) and size regardless.
-const preCheck = (file: File): string | null => {
-  if (!ALLOWED_MIME.includes(file.type)) {
-    return 'Only JPG, PNG and PDF files are allowed.';
-  }
-  if (file.size > MAX_SIZE) {
-    return 'File exceeds the 5MB limit.';
-  }
-  return null;
-};
+const preCheck = (file: File): string | null => checkFile(file, { allowPdf: true });
 
 export default function DocumentsPage() {
   const [documentType, setDocumentType] = useState<DocumentType>('aadhaar');
@@ -79,7 +69,7 @@ export default function DocumentsPage() {
         <section className="rounded-lg border border-line bg-surface p-5">
           <h1 className="text-xl font-bold text-ink">Upload a document</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            JPG, PNG or PDF up to 5MB. Documents are reviewed by our team after upload.
+            JPG, PNG or PDF up to 4MB. Documents are reviewed by our team after upload.
           </p>
 
           {banner && (
@@ -124,7 +114,7 @@ export default function DocumentsPage() {
                 <p className="text-sm font-medium text-ink-muted">
                   Drag &amp; drop a file here, or click to browse
                 </p>
-                <p className="mt-1 text-xs text-ink-faint">JPG · PNG · PDF · max 5MB</p>
+                <p className="mt-1 text-xs text-ink-faint">JPG · PNG · PDF · max 4MB</p>
               </>
             )}
             <input

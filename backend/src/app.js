@@ -23,6 +23,12 @@ const errorHandler = require('./middlewares/errorHandler');
 
 const app = express();
 
+// Behind Vercel/most reverse proxies the client IP arrives in
+// X-Forwarded-For. Trust exactly one proxy hop so req.ip (used by the
+// express-rate-limit keyers) resolves to the real client — without this,
+// express-rate-limit v8 rejects every request that carries the header.
+app.set('trust proxy', 1);
+
 // helmet v8 defaults already include Content-Security-Policy, HSTS,
 // X-Content-Type-Options, frameguard, etc. — applied in all environments.
 app.use(helmet());
@@ -46,7 +52,9 @@ app.use(
   })
 );
 
-app.use(express.json());
+// 2mb (not the 100kb default) because agreement signing sends a base64
+// signature image in JSON — up to 1MB of image ≈ 1.4MB encoded.
+app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // NoSQL injection defense: strip keys starting with "$" or containing "."

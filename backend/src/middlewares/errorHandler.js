@@ -19,7 +19,7 @@ const errorHandler = (err, req, res, next) => {
   // but catch any that arrive raw)
   if (err.name === 'MulterError') {
     const message =
-      err.code === 'LIMIT_FILE_SIZE' ? 'File exceeds 5MB limit' : err.message;
+      err.code === 'LIMIT_FILE_SIZE' ? 'File exceeds 4MB limit' : err.message;
     return res.status(400).json({ error: message });
   }
 

@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
-const RETRY_DELAY_MS = 5000;
+// One connection per process, shared by every caller. The promise is cached
+// (not the connection) so concurrent callers during a cold start all await
+// the same connect; on failure the cache is cleared so the next call — the
+// next serverless invocation or the server's retry loop — can try again.
+let connectionPromise = null;
 
 const connectDB = async () => {
   const uri = process.env.MONGO_URI;
@@ -10,25 +14,31 @@ const connectDB = async () => {
       '[db] MONGO_URI is not set. Copy .env.example to .env and provide a MongoDB connection string. ' +
         'The server will keep running, but database operations will fail until it is configured.'
     );
-    return;
+    return null;
   }
 
-  const attempt = async () => {
-    try {
-      await mongoose.connect(uri);
+  if (connectionPromise) return connectionPromise;
+
+  connectionPromise = mongoose
+    .connect(uri, {
+      // Fail fast instead of the 30s default — a serverless invocation
+      // should return a clean 503 rather than hit the platform timeout.
+      serverSelectionTimeoutMS: 10000,
+    })
+    .then((m) => {
       console.log(`[db] MongoDB connected: ${mongoose.connection.host}`);
-    } catch (err) {
-      console.error(`[db] MongoDB connection failed: ${err.message}`);
-      console.error(`[db] Retrying in ${RETRY_DELAY_MS / 1000}s...`);
-      setTimeout(attempt, RETRY_DELAY_MS);
-    }
-  };
+      return m;
+    })
+    .catch((err) => {
+      connectionPromise = null;
+      throw err;
+    });
 
-  mongoose.connection.on('disconnected', () => {
-    console.warn('[db] MongoDB disconnected.');
-  });
-
-  await attempt();
+  return connectionPromise;
 };
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('[db] MongoDB disconnected.');
+});
 
 module.exports = connectDB;

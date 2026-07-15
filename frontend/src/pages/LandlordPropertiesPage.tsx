@@ -141,7 +141,7 @@ export default function LandlordPropertiesPage() {
     setImageError('');
     const list = Array.from(files);
     for (const file of list) {
-      const problem = checkFile(file); // jpg/png only, 5MB — matches backend
+      const problem = checkFile(file); // jpg/png only, 4MB — matches backend
       if (problem) { setImageError(`${file.name}: ${problem}`); return; }
     }
     setUploadingImages(true);
@@ -337,7 +337,7 @@ export default function LandlordPropertiesPage() {
                 className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-primary-600 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-primary-700" />
             </label>
             <p className="mt-2 text-xs text-ink-faint">
-              {uploadingImages ? 'Uploading…' : 'JPG/PNG, max 5MB each, up to 10 per upload.'}
+              {uploadingImages ? 'Uploading…' : 'JPG/PNG, max 4MB each, up to 10 per upload.'}
             </p>
           </div>
         </div>

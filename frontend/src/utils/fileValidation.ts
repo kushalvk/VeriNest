@@ -1,4 +1,6 @@
-export const MAX_FILE_SIZE = 5 * 1024 * 1024;
+// Matches the backend's multer limit, which itself stays under Vercel's
+// 4.5MB serverless request-body cap.
+export const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
 /**
  * Fast client-side pre-check to avoid wasted uploads. UX only — the
@@ -16,7 +18,7 @@ export const checkFile = (
       : 'Only JPG and PNG images are allowed.';
   }
   if (file.size > MAX_FILE_SIZE) {
-    return 'File exceeds the 5MB limit.';
+    return 'File exceeds the 4MB limit.';
   }
   return null;
 };
