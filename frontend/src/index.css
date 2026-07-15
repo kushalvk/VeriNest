@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Semantic surface tokens — the single source of truth for neutral colors.
+ * Components use bg-canvas / bg-surface / text-ink / border-line etc.;
+ * the values flip here when `.dark` is set on <html> (see ThemeToggle and
+ * the pre-paint script in index.html). Raw slate-* classes are reserved
+ * for things that must NOT change with theme (e.g. modal overlays).
+ */
+@layer base {
+  :root {
+    color-scheme: light;
+    --vn-canvas: 241 245 249; /* slate-100 — page background */
+    --vn-surface: 255 255 255; /* white — cards, header, footer */
+    --vn-surface-muted: 248 250 252; /* slate-50 — subtle fills, hovers */
+    --vn-ink: 15 23 42; /* slate-900 — headings, strong text */
+    --vn-ink-muted: 71 85 105; /* slate-600 — body/secondary text */
+    --vn-ink-faint: 148 163 184; /* slate-400 — hints, timestamps */
+    --vn-line: 226 232 240; /* slate-200 — borders, dividers */
+    --vn-line-strong: 203 213 225; /* slate-300 — input borders, dashed */
+  }
+
+  .dark {
+    color-scheme: dark;
+    --vn-canvas: 2 6 23; /* slate-950 */
+    --vn-surface: 15 23 42; /* slate-900 */
+    --vn-surface-muted: 30 41 59; /* slate-800 */
+    --vn-ink: 241 245 249; /* slate-100 */
+    --vn-ink-muted: 148 163 184; /* slate-400 */
+    --vn-ink-faint: 100 116 139; /* slate-500 */
+    --vn-line: 30 41 59; /* slate-800 */
+    --vn-line-strong: 51 65 85; /* slate-700 */
+  }
+
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+  }
+
+  /* Smooth theme switching — colors cross-fade instead of snapping. */
+  @media (prefers-reduced-motion: no-preference) {
+    *,
+    ::before,
+    ::after {
+      transition:
+        background-color 150ms ease,
+        border-color 150ms ease,
+        color 150ms ease,
+        fill 150ms ease,
+        stroke 150ms ease;
+    }
+  }
+}
