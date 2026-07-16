@@ -58,6 +58,16 @@ const createRequest = async (req, res, next) => {
       });
     }
 
+    // If the admin has already verified every document, there is nothing
+    // left to verify — the landlord sees "verification done" instead.
+    const docs = await Document.find({ tenantId: application.tenantId })
+      .select('verificationStatus');
+    if (docs.length > 0 && docs.every((d) => d.verificationStatus === 'verified')) {
+      return res.status(409).json({
+        error: 'All of this tenant\'s documents are already verified — no verification request is needed',
+      });
+    }
+
     const request = await VerificationRequest.create({
       landlordId: req.user.id,
       tenantId: application.tenantId,
@@ -65,6 +75,20 @@ const createRequest = async (req, res, next) => {
       accessType,
       status: 'pending',
     });
+
+    // A fresh landlord request re-queues previously rejected documents for
+    // admin review (rejected → pending). Side effect: never fails the request.
+    try {
+      await Document.updateMany(
+        { tenantId: application.tenantId, verificationStatus: 'rejected' },
+        {
+          $set: { verificationStatus: 'pending' },
+          $unset: { verifiedBy: 1, verifiedAt: 1 },
+        }
+      );
+    } catch (err) {
+      console.error(`[verification] Re-queueing rejected documents failed: ${err.message}`);
+    }
 
     try {
       const [tenant, landlord, property] = await Promise.all([

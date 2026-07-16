@@ -23,6 +23,16 @@ const MAX_SIGNATURE_BYTES = 1024 * 1024; // 1MB
 const newAgreementNumber = () =>
   `AGR-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
+// Rental agreements must run 3–11 months (calendar-month arithmetic from startDate).
+const MIN_AGREEMENT_MONTHS = 3;
+const MAX_AGREEMENT_MONTHS = 11;
+
+const addMonths = (date, months) => {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + months);
+  return d;
+};
+
 /**
  * Validates a client-supplied signature: plausible base64 (data-URI prefix
  * optional) decoding to a real PNG/JPEG under 1MB. Returns the reason it's
@@ -67,6 +77,9 @@ const createAgreement = async (req, res, next) => {
     if (end <= start) {
       return res.status(422).json({ error: 'endDate must be after startDate' });
     }
+    if (end < addMonths(start, MIN_AGREEMENT_MONTHS) || end > addMonths(start, MAX_AGREEMENT_MONTHS)) {
+      return res.status(422).json({ error: 'Agreement duration must be between 3 and 11 months' });
+    }
 
     const application = await Application.findById(applicationId);
     if (!application) {
@@ -91,6 +104,11 @@ const createAgreement = async (req, res, next) => {
     if (!property || !tenant || !landlord) {
       return res.status(404).json({ error: 'Related property or parties not found' });
     }
+    if (property.status === 'occupied') {
+      return res.status(409).json({
+        error: 'This property is currently rented — the tenancy must be completed before a new agreement can be created',
+      });
+    }
 
     const agreementNumber = newAgreementNumber();
     const addr = property.address || {};
@@ -108,9 +126,13 @@ const createAgreement = async (req, res, next) => {
       endDate: end,
     });
 
-    // 'raw' — Cloudinary refuses public delivery of image-typed PDFs (401)
+    // 'raw' — Cloudinary refuses public delivery of image-typed PDFs (401).
+    // Raw assets only get a file extension if it's part of the public_id,
+    // so name it explicitly — otherwise the delivered file has no .pdf
+    // extension and browsers save it as an unknown format.
     const uploaded = await uploadToCloudinary(pdfBuffer, FOLDERS.agreements, {
       resourceType: 'raw',
+      publicId: `${FOLDERS.agreements}/${agreementNumber}.pdf`,
     });
 
     // agreementNumber collision is astronomically unlikely (timestamp +
@@ -220,6 +242,17 @@ const signAgreement = async (req, res, next) => {
     await agreement.save();
 
     if (becameActive) {
+      // The property is now rented: hide it from public search and block
+      // new applications until the landlord marks the tenancy completed.
+      try {
+        await Property.updateOne(
+          { _id: agreement.propertyId },
+          { $set: { status: 'occupied' } }
+        );
+      } catch (err) {
+        console.error(`[agreements] Marking property occupied failed: ${err.message}`);
+      }
+
       // Fire-and-forget: rental history bookkeeping must never block or
       // fail the signing response (same pattern as trust score / emails).
       const rentalHistoryController = require('./rentalHistoryController');

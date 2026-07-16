@@ -32,6 +32,70 @@ export default function AgreementPage() {
   const [signature, setSignature] = useState<string | null>(null);
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const [viewUrl, setViewUrl] = useState<string | null>(null);
+  const [loadingView, setLoadingView] = useState(false);
+
+  // Cloudinary serves raw assets as a download, not inline — so both viewing
+  // and downloading go through a blob typed application/pdf: the browser can
+  // render that in its own PDF viewer, and saves keep the .pdf name.
+  const fetchPdfBlobUrl = async () => {
+    if (!agreement?.agreementPdf?.url) throw new Error('No PDF');
+    const res = await fetch(agreement.agreementPdf.url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    return URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+  };
+
+  const viewPdf = async () => {
+    if (loadingView || viewUrl) return;
+    setLoadingView(true);
+    try {
+      setViewUrl(await fetchPdfBlobUrl());
+    } catch {
+      if (agreement?.agreementPdf?.url) {
+        window.open(agreement.agreementPdf.url, '_blank', 'noreferrer');
+      }
+    } finally {
+      setLoadingView(false);
+    }
+  };
+
+  const closeViewer = () => setViewUrl(null);
+
+  // Revoke the blob URL only AFTER the viewer is gone (cleanup), and let
+  // Escape close it. Revoking inside the click handler can race the iframe.
+  useEffect(() => {
+    if (!viewUrl) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setViewUrl(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      URL.revokeObjectURL(viewUrl);
+    };
+  }, [viewUrl]);
+
+  const downloadPdf = async () => {
+    if (!agreement?.agreementPdf?.url || downloading) return;
+    setDownloading(true);
+    try {
+      const href = await fetchPdfBlobUrl();
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = `${agreement.agreementNumber}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(href);
+    } catch {
+      // fall back to opening the raw URL in a new tab
+      window.open(agreement.agreementPdf.url, '_blank', 'noreferrer');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -123,11 +187,18 @@ export default function AgreementPage() {
           <div className="col-span-2">
             <p className="text-xs uppercase tracking-wide text-ink-faint">Document</p>
             {agreement.agreementPdf?.url ? (
-              <a href={agreement.agreementPdf.url} target="_blank" rel="noreferrer"
-                data-testid="agreement-pdf"
-                className="mt-0.5 inline-block font-medium text-primary-600 hover:underline">
-                View / download PDF ↗
-              </a>
+              <div className="mt-0.5 flex flex-wrap items-center gap-3">
+                <button type="button" onClick={() => void viewPdf()} disabled={loadingView}
+                  data-testid="agreement-pdf"
+                  className="inline-block font-medium text-primary-600 hover:underline disabled:opacity-50">
+                  {loadingView ? 'Opening…' : 'View 👁'}
+                </button>
+                <button type="button" onClick={() => void downloadPdf()} disabled={downloading}
+                  data-testid="download-agreement-pdf"
+                  className="inline-block font-medium text-primary-600 hover:underline disabled:opacity-50">
+                  {downloading ? 'Downloading…' : 'Download PDF ⬇'}
+                </button>
+              </div>
             ) : <p className="mt-0.5 text-ink-faint">Not generated</p>}
           </div>
         </section>
@@ -181,6 +252,32 @@ export default function AgreementPage() {
           </p>
         )}
       </div>
+
+      {/* in-page PDF viewer — closes via ✕, backdrop click, or Escape */}
+      {viewUrl && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4 py-6"
+          data-testid="pdf-viewer-modal"
+          onClick={(e) => { if (e.target === e.currentTarget) closeViewer(); }}>
+          <div className="flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-surface shadow-xl">
+            <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
+              <h3 className="truncate text-sm font-semibold text-ink">
+                Agreement {agreement.agreementNumber}
+              </h3>
+              <div className="flex shrink-0 items-center gap-2">
+                <button type="button" onClick={() => void downloadPdf()} disabled={downloading}
+                  className="rounded-md px-2 py-1.5 text-sm font-medium text-primary-600 hover:bg-primary-50 disabled:opacity-50">
+                  {downloading ? 'Downloading…' : 'Download ⬇'}
+                </button>
+                <button type="button" onClick={closeViewer} data-testid="close-pdf-viewer"
+                  className="rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium text-ink-muted hover:bg-surface-muted">
+                  Close ✕
+                </button>
+              </div>
+            </div>
+            <iframe src={viewUrl} title="Agreement PDF" className="min-h-0 w-full flex-1 bg-canvas" />
+          </div>
+        </div>
+      )}
     </main>
   );
 }

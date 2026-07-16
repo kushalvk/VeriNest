@@ -8,6 +8,9 @@ const router = express.Router();
 router.use(authMiddleware, requireRole('admin'));
 
 router.get('/', controller.listPendingDocuments);
+// static segments before the '/:id' matcher
+router.get('/users', controller.listDocumentUsers);
+router.get('/users/:tenantId', controller.listUserDocuments);
 router.patch('/:id', controller.updateDocumentStatus);
 
 module.exports = router;

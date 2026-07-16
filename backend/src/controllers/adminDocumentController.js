@@ -39,6 +39,104 @@ const listPendingDocuments = async (req, res, next) => {
   }
 };
 
+// GET /api/admin/documents/users?page=1&limit=10
+// Review queue grouped by tenant: one row per user with per-status counts,
+// so admins drill into a person rather than a flat document list.
+const listDocumentUsers = async (req, res, next) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
+
+    const countIf = (status) => ({
+      $sum: { $cond: [{ $eq: ['$verificationStatus', status] }, 1, 0] },
+    });
+
+    const [users, distinctTenants] = await Promise.all([
+      Document.aggregate([
+        {
+          $group: {
+            _id: '$tenantId',
+            total: { $sum: 1 },
+            pending: countIf('pending'),
+            verified: countIf('verified'),
+            rejected: countIf('rejected'),
+            flagged: {
+              $sum: {
+                $cond: [
+                  {
+                    $or: [
+                      { $eq: ['$fraudDetected', true] },
+                      { $eq: ['$duplicateDetected', true] },
+                      { $eq: ['$blurryDocument', true] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            lastUploadAt: { $max: '$createdAt' },
+          },
+        },
+        // Users needing attention first, then most recent activity.
+        { $sort: { pending: -1, lastUploadAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        {
+          $lookup: {
+            from: 'users',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'user',
+          },
+        },
+        { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            _id: 0,
+            tenantId: '$_id',
+            fullName: '$user.fullName',
+            email: '$user.email',
+            total: 1,
+            pending: 1,
+            verified: 1,
+            rejected: 1,
+            flagged: 1,
+            lastUploadAt: 1,
+          },
+        },
+      ]),
+      Document.distinct('tenantId'),
+    ]);
+
+    const total = distinctTenants.length;
+    return res.status(200).json({
+      users,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// GET /api/admin/documents/users/:tenantId — every document of one tenant
+const listUserDocuments = async (req, res, next) => {
+  try {
+    const { tenantId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(tenantId)) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const documents = await Document.find({ tenantId })
+      .sort({ createdAt: -1 })
+      .populate('tenantId', 'fullName email');
+
+    return res.status(200).json({ documents });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 // PATCH /api/admin/documents/:id  body: { status: "verified"|"rejected", remarks? }
 const updateDocumentStatus = async (req, res, next) => {
   try {
@@ -108,4 +206,9 @@ const updateDocumentStatus = async (req, res, next) => {
   }
 };
 
-module.exports = { listPendingDocuments, updateDocumentStatus };
+module.exports = {
+  listPendingDocuments,
+  listDocumentUsers,
+  listUserDocuments,
+  updateDocumentStatus,
+};

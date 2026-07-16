@@ -239,6 +239,22 @@ describe('Tenant verification E2E smoke test', () => {
     expect(res.status).toBe(200);
     const ids = res.body.applications.map((a) => a._id);
     expect(ids).toContain(S.applicationId);
+    // screening data rides along with each application
+    const mine = res.body.applications.find((a) => a._id === S.applicationId);
+    expect(mine.tenantMeta).toBeDefined();
+    expect(mine.tenantMeta.trustScore).toBeGreaterThan(0);
+    expect(mine.tenantMeta.documentsVerified).toBe(1);
+  });
+
+  step('o2. landlord views tenant profile summary → 200', async () => {
+    const res = await request(app)
+      .get(`/api/applications/${S.applicationId}/tenant-profile`)
+      .set('Authorization', `Bearer ${S.landlordToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.trustScore).toBeGreaterThan(0);
+    expect(res.body.allDocumentsVerified).toBe(true);
+    // sensitive identifiers must never reach the landlord
+    expect(JSON.stringify(res.body)).not.toMatch(/aadhaarNumber|panNumber|passportNumber/);
   });
 
   step('p. landlord accepts application → 200', async () => {
@@ -248,6 +264,23 @@ describe('Tenant verification E2E smoke test', () => {
       .send({ status: 'accepted' });
     expect(res.status).toBe(200);
     expect(res.body.application.status).toBe('accepted');
+  });
+
+  step('q1. verification request blocked while all documents verified → 409', async () => {
+    const res = await request(app)
+      .post('/api/verification-requests')
+      .set('Authorization', `Bearer ${S.landlordToken}`)
+      .send({ applicationId: S.applicationId, accessType: '24_hours' });
+    expect(res.status).toBe(409);
+  });
+
+  step('q2. tenant uploads a second (still-pending) document → 201', async () => {
+    const res = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', `Bearer ${S.tenantToken}`)
+      .field('documentType', 'pan')
+      .attach('file', FIXTURE_IMAGE);
+    expect(res.status).toBe(201);
   });
 
   step('q. landlord creates verification request → 201', async () => {
@@ -273,11 +306,14 @@ describe('Tenant verification E2E smoke test', () => {
   step('s. token grants document access without extractedData', async () => {
     const res = await request(app).get(`/api/verification/access/${S.secureToken}`);
     expect(res.status).toBe(200);
-    expect(res.body.documents.length).toBeGreaterThanOrEqual(1);
+    // aadhaar (admin-verified) + pan (still pending from step q2)
+    expect(res.body.documents.length).toBeGreaterThanOrEqual(2);
+    const statuses = res.body.documents.map((d) => d.verificationStatus);
+    expect(statuses).toContain('verified');
+    expect(statuses).toContain('pending');
     for (const doc of res.body.documents) {
       expect(doc.documentType).toBeDefined();
       expect(doc.url).toBeDefined();
-      expect(doc.verificationStatus).toBe('verified');
       expect(doc.extractedData).toBeUndefined();
       expect(doc._id).toBeUndefined();
     }

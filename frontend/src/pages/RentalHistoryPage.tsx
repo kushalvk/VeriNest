@@ -154,12 +154,18 @@ export default function RentalHistoryPage() {
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
-                {!completed && completingId !== record._id && (
+                {/* completing a rental relists the property, so it's landlord-only */}
+                {!completed && side === 'landlord' && completingId !== record._id && (
                   <button type="button" onClick={() => { setCompletingId(record._id); setRatingId(null); }}
                     data-testid="mark-completed"
                     className="rounded-md border border-line-strong px-3 py-1.5 text-xs font-medium text-ink-muted hover:bg-surface-muted">
                     Mark as completed
                   </button>
+                )}
+                {!completed && side === 'tenant' && (
+                  <p className="text-xs text-ink-faint">
+                    Ongoing — your landlord will mark this rental as completed after move-out.
+                  </p>
                 )}
                 {completed && myRating == null && ratingId !== record._id && (
                   <button type="button" onClick={() => { setRatingId(record._id); setCompletingId(null); }}

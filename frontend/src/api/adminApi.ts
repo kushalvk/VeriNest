@@ -26,6 +26,33 @@ export const getDocuments = async (status: AdminVerificationStatus, page = 1) =>
   return data;
 };
 
+export interface AdminDocumentUser {
+  tenantId: string;
+  fullName?: string;
+  email?: string;
+  total: number;
+  pending: number;
+  verified: number;
+  rejected: number;
+  flagged: number;
+  lastUploadAt: string;
+}
+
+export const getDocumentUsers = async (page = 1) => {
+  const { data } = await client.get<{ users: AdminDocumentUser[]; pagination: Pagination }>(
+    '/admin/documents/users',
+    { params: { page, limit: 10 } }
+  );
+  return data;
+};
+
+export const getUserDocuments = async (tenantId: string) => {
+  const { data } = await client.get<{ documents: AdminDocument[] }>(
+    `/admin/documents/users/${tenantId}`
+  );
+  return data.documents;
+};
+
 export const updateDocumentStatus = async (
   id: string,
   status: 'verified' | 'rejected',

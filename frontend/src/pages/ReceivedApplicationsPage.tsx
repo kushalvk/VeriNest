@@ -4,8 +4,27 @@ import * as applicationApi from '../api/applicationApi';
 import * as agreementApi from '../api/agreementApi';
 import { getApiError } from '../api/client';
 import VerificationRequestModal from '../components/VerificationRequestModal';
+import TenantProfileModal from '../components/TenantProfileModal';
+import { trustScoreColor } from '../utils/trustScore';
 import { inputClass, labelClass } from '../components/AuthCard';
 import type { ReceivedApplication } from '../api/applicationApi';
+
+// Rental agreements must run 3–11 months (mirrors the server-side rule).
+const MIN_AGREEMENT_MONTHS = 3;
+const MAX_AGREEMENT_MONTHS = 11;
+
+const addMonths = (isoDate: string, months: number) => {
+  const d = new Date(isoDate);
+  d.setMonth(d.getMonth() + months);
+  return d;
+};
+
+const toInputDate = (d: Date) => d.toISOString().slice(0, 10);
+
+const allDocsVerified = (app: ReceivedApplication) =>
+  !!app.tenantMeta &&
+  app.tenantMeta.documentsTotal > 0 &&
+  app.tenantMeta.documentsVerified === app.tenantMeta.documentsTotal;
 
 const statusStyles: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
@@ -19,6 +38,7 @@ export default function ReceivedApplicationsPage() {
   const [error, setError] = useState('');
   const [rejecting, setRejecting] = useState<ReceivedApplication | null>(null);
   const [verifyFor, setVerifyFor] = useState<ReceivedApplication | null>(null);
+  const [profileFor, setProfileFor] = useState<ReceivedApplication | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   // applicationId → agreementId, so accepted rows can link to an existing agreement
   const [agreementByApp, setAgreementByApp] = useState<Record<string, string>>({});
@@ -46,6 +66,14 @@ export default function ReceivedApplicationsPage() {
     if (!agreementFor || agrBusy) return;
     if (!agrForm.startDate || !agrForm.endDate) {
       setAgrError('Start and end dates are required.');
+      return;
+    }
+    const end = new Date(agrForm.endDate);
+    if (
+      end < addMonths(agrForm.startDate, MIN_AGREEMENT_MONTHS) ||
+      end > addMonths(agrForm.startDate, MAX_AGREEMENT_MONTHS)
+    ) {
+      setAgrError('Agreement duration must be between 3 and 11 months.');
       return;
     }
     setAgrBusy(true);
@@ -106,6 +134,16 @@ export default function ReceivedApplicationsPage() {
                 className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${statusStyles[app.status]}`}>
                 {app.status}
               </span>
+              {app.tenantMeta?.trustScore != null && (
+                <span data-testid="trust-score-chip"
+                  className="rounded-full border border-line bg-surface-muted px-2 py-0.5 text-xs font-semibold">
+                  <span className="font-normal text-ink-faint">Trust </span>
+                  <span className={trustScoreColor(app.tenantMeta.trustScore)}>
+                    {app.tenantMeta.trustScore}
+                  </span>
+                  <span className="font-normal text-ink-faint">/100</span>
+                </span>
+              )}
             </div>
             <p className="mt-0.5 text-sm text-ink-muted">{app.tenantId?.email}</p>
             <p className="mt-1 text-sm text-ink-muted">
@@ -121,7 +159,12 @@ export default function ReceivedApplicationsPage() {
               Received {new Date(app.appliedAt).toLocaleDateString()}
             </p>
 
-            <div className="mt-3 flex gap-2 border-t border-line pt-3">
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+              <button type="button" data-testid="view-tenant-profile"
+                onClick={() => setProfileFor(app)}
+                className="rounded-md border border-line-strong px-3 py-1.5 text-xs font-medium text-ink-muted hover:bg-surface-muted">
+                View tenant profile
+              </button>
               {app.status === 'pending' && (
                 <>
                   <button type="button" data-testid="accept-application"
@@ -140,11 +183,18 @@ export default function ReceivedApplicationsPage() {
               )}
               {app.status === 'accepted' && (
                 <>
-                  <button type="button" data-testid="request-verification"
-                    onClick={() => setVerifyFor(app)}
-                    className="rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700">
-                    Request document verification
-                  </button>
+                  {allDocsVerified(app) ? (
+                    <span data-testid="verification-done"
+                      className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
+                      ✓ Documents verified — no request needed
+                    </span>
+                  ) : (
+                    <button type="button" data-testid="request-verification"
+                      onClick={() => setVerifyFor(app)}
+                      className="rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700">
+                      Request document verification
+                    </button>
+                  )}
                   {agreementByApp[app._id] ? (
                     <Link to={`/agreements/${agreementByApp[app._id]}`} data-testid="view-agreement"
                       className="rounded-md border border-green-300 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-50">
@@ -196,6 +246,13 @@ export default function ReceivedApplicationsPage() {
         />
       )}
 
+      {profileFor && (
+        <TenantProfileModal
+          applicationId={profileFor._id}
+          onClose={() => setProfileFor(null)}
+        />
+      )}
+
       {/* create-agreement dialog: tenant/property/rent come from the application */}
       {agreementFor && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-slate-900/50 px-4" data-testid="agreement-dialog">
@@ -218,8 +275,13 @@ export default function ReceivedApplicationsPage() {
               <div>
                 <label htmlFor="agr-end" className={labelClass}>End date</label>
                 <input id="agr-end" type="date" className={inputClass} value={agrForm.endDate}
+                  min={agrForm.startDate ? toInputDate(addMonths(agrForm.startDate, MIN_AGREEMENT_MONTHS)) : undefined}
+                  max={agrForm.startDate ? toInputDate(addMonths(agrForm.startDate, MAX_AGREEMENT_MONTHS)) : undefined}
                   onChange={(e) => setAgrForm((f) => ({ ...f, endDate: e.target.value }))} />
               </div>
+              <p className="col-span-2 -mt-1 text-xs text-ink-faint">
+                Agreement duration must be between 3 and 11 months.
+              </p>
               <div className="col-span-2">
                 <label htmlFor="agr-deposit" className={labelClass}>Security deposit (Rs., optional)</label>
                 <input id="agr-deposit" type="number" min="0" className={inputClass} value={agrForm.deposit}

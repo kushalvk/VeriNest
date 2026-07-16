@@ -198,7 +198,7 @@ sequenceDiagram
     L->>P: Draw signature → stamped into PDF
     P->>P: Agreement ACTIVE → rental history record auto-created
     P->>T: 📧 "Agreement Fully Signed" (both parties)
-    T->>P: (later) Mark tenancy completed
+    L->>P: (later) Mark tenancy completed → property relisted
     T->>P: Rate landlord ⭐ / L->>P: Rate tenant ⭐
     P->>P: Landlord's rating feeds tenant trust score
 ```
@@ -273,7 +273,9 @@ The most security-sensitive flow, designed so raw document access is **consent-b
 time-boxed, and unforgeable**:
 
 1. Landlord requests access on an **accepted** application, choosing `one_time`,
-   `24_hours`, or `7_days`.
+   `24_hours`, or `7_days`. If every document is already admin-verified the request is
+   refused (409) — there's nothing left to verify. Creating a request **re-queues any
+   rejected documents** (`rejected` → `pending`) for a fresh admin review.
 2. Tenant approves (or rejects). On approval the server generates a **256-bit random
    token**; only its **SHA-256 hash** is persisted. The raw token appears exactly once —
    in the approval response shown to the tenant, who shares the link.
@@ -295,12 +297,18 @@ time-boxed, and unforgeable**:
   Double-signing returns 409.
 - When the second signature lands, the agreement flips to **active**, `signedAt` is
   stamped, a **rental history record is auto-created** (the only way one can be created),
-  and both parties get the "fully signed" email.
+  and both parties get the "fully signed" email. The property is marked **occupied** —
+  it disappears from public search and stops accepting applications until the landlord
+  marks the tenancy completed.
+- Agreement duration must be **3–11 months**; an agreement can't be created for a
+  property that is currently occupied.
 
 ### 7. Rental history & two-way ratings
 
 - Records exist only via agreement activation (unique per agreement — no duplicates).
-- Either party can mark the tenancy **completed** (move-out date).
+- Only the **landlord** can mark the tenancy **completed** (move-out date) — doing so
+  flips the agreement to `completed` and puts the property back on the market
+  (`occupied` → `available`).
 - **Rating direction is fixed by identity**: tenants rate landlords, landlords rate
   tenants — the UI doesn't even offer a choice, and the API derives the direction from
   who is calling. One rating per side; the rated party is notified by email.
@@ -369,6 +377,8 @@ Auth = `Authorization: Bearer <accessToken>` unless marked *public*.
 | POST | `/documents/:id/ocr` | tenant | Run OCR extraction |
 | POST | `/documents/:id/fraud-check` | tenant/admin | Run fraud heuristics |
 | GET | `/admin/documents?status=` | admin | Review queue (pending/verified/rejected) |
+| GET | `/admin/documents/users` | admin | Users with documents + per-status counts |
+| GET | `/admin/documents/users/:tenantId` | admin | All documents of one user |
 | PATCH | `/admin/documents/:id` | admin | Verify or reject (+ remarks) |
 
 ### Properties
@@ -385,6 +395,7 @@ Auth = `Authorization: Bearer <accessToken>` unless marked *public*.
 | Method | Path | Access | Purpose |
 |---|---|---|---|
 | POST | `/applications` | tenant | Apply (requires complete profile; no duplicates) |
+| GET | `/applications/:id/tenant-profile` | landlord | Screening summary: trust score, safe profile fields, document statuses |
 | GET | `/applications/mine` | tenant | Own applications |
 | GET | `/applications/received` | landlord | Incoming applications |
 | PATCH | `/applications/:id` | landlord | Accept / reject |
@@ -409,7 +420,7 @@ Auth = `Authorization: Bearer <accessToken>` unless marked *public*.
 | Method | Path | Access | Purpose |
 |---|---|---|---|
 | GET | `/rental-history/mine` | party | Own rental records |
-| PATCH | `/rental-history/:id/complete` | party | Set move-out date |
+| PATCH | `/rental-history/:id/complete` | landlord (party) | Set move-out date; relists the property |
 | PATCH | `/rental-history/:id/rate` | party | Rate the other side (1–5 + review) |
 | GET | `/notifications/mine` | any authed | Own notifications + unread count |
 | PATCH | `/notifications/:id/read` | any authed | Mark as read |

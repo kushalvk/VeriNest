@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Application = require('../models/Application');
+const Document = require('../models/Document');
 const Property = require('../models/Property');
 const TenantProfile = require('../models/TenantProfile');
 const User = require('../models/User');
@@ -113,7 +114,9 @@ const getMyApplications = async (req, res, next) => {
   }
 };
 
-// GET /api/applications/received — applications for the landlord's properties
+// GET /api/applications/received — applications for the landlord's properties.
+// Each application carries a tenantMeta block (trust score + document
+// verification counts) so the landlord can screen BEFORE accepting.
 const getReceivedApplications = async (req, res, next) => {
   try {
     const { page, limit } = paginate(req);
@@ -129,9 +132,114 @@ const getReceivedApplications = async (req, res, next) => {
       Application.countDocuments(filter),
     ]);
 
+    const tenantIds = [
+      ...new Set(
+        applications
+          .map((a) => a.tenantId?._id?.toString())
+          .filter(Boolean)
+      ),
+    ].map((id) => new mongoose.Types.ObjectId(id));
+
+    const [profiles, docCounts] = await Promise.all([
+      TenantProfile.find({ userId: { $in: tenantIds } }).select('userId trustScore'),
+      Document.aggregate([
+        { $match: { tenantId: { $in: tenantIds } } },
+        {
+          $group: {
+            _id: '$tenantId',
+            total: { $sum: 1 },
+            verified: {
+              $sum: { $cond: [{ $eq: ['$verificationStatus', 'verified'] }, 1, 0] },
+            },
+          },
+        },
+      ]),
+    ]);
+    const scoreByTenant = new Map(profiles.map((p) => [p.userId.toString(), p.trustScore]));
+    const docsByTenant = new Map(docCounts.map((d) => [d._id.toString(), d]));
+
+    const enriched = applications.map((a) => {
+      const tid = a.tenantId?._id?.toString();
+      const docs = tid ? docsByTenant.get(tid) : null;
+      return {
+        ...a.toObject(),
+        tenantMeta: {
+          trustScore: tid ? scoreByTenant.get(tid) ?? null : null,
+          documentsTotal: docs?.total ?? 0,
+          documentsVerified: docs?.verified ?? 0,
+        },
+      };
+    });
+
     return res.status(200).json({
-      applications,
+      applications: enriched,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// GET /api/applications/:id/tenant-profile — screening summary for the
+// landlord the application is addressed to (any status — the point is to
+// review the tenant BEFORE deciding). Only non-sensitive profile fields:
+// never Aadhaar/PAN/passport numbers, full addresses, or document files —
+// document ACCESS still goes through the tenant-approved token flow.
+const getTenantSummary = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    const application = await Application.findById(id);
+    if (!application) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    if (application.landlordId.toString() !== req.user.id) {
+      return res
+        .status(403)
+        .json({ error: 'Forbidden: this application is not addressed to you' });
+    }
+
+    const [tenant, profile, documents] = await Promise.all([
+      User.findById(application.tenantId).select('fullName email createdAt'),
+      TenantProfile.findOne({ userId: application.tenantId }),
+      Document.find({ tenantId: application.tenantId })
+        .select('documentType verificationStatus')
+        .sort({ createdAt: -1 }),
+    ]);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    const docList = documents.map((d) => ({
+      documentType: d.documentType,
+      verificationStatus: d.verificationStatus,
+    }));
+
+    return res.status(200).json({
+      tenant: {
+        fullName: tenant.fullName,
+        email: tenant.email,
+        memberSince: tenant.createdAt,
+      },
+      trustScore: profile?.trustScore ?? null,
+      trustReasons: profile?.trustReason ?? [],
+      profile: profile
+        ? {
+            occupation: profile.occupation,
+            employmentType: profile.employmentType,
+            companyName: profile.companyName,
+            designation: profile.designation,
+            monthlySalary: profile.monthlySalary,
+            currentCity: profile.currentAddress?.city,
+            currentState: profile.currentAddress?.state,
+            policeVerificationStatus: profile.policeVerificationStatus,
+          }
+        : null,
+      documents: docList,
+      allDocumentsVerified:
+        docList.length > 0 && docList.every((d) => d.verificationStatus === 'verified'),
     });
   } catch (err) {
     return next(err);
@@ -200,5 +308,6 @@ module.exports = {
   applyToProperty,
   getMyApplications,
   getReceivedApplications,
+  getTenantSummary,
   updateApplicationStatus,
 };

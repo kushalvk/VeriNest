@@ -27,10 +27,42 @@ export interface MyApplication extends Application {
   propertyId: PopulatedProperty | null;
 }
 
+export interface TenantMeta {
+  trustScore: number | null;
+  documentsTotal: number;
+  documentsVerified: number;
+}
+
 export interface ReceivedApplication extends Application {
   tenantId: PopulatedTenant | null;
   propertyId: PopulatedProperty | null;
+  tenantMeta?: TenantMeta;
 }
+
+export interface TenantSummary {
+  tenant: { fullName: string; email: string; memberSince?: string };
+  trustScore: number | null;
+  trustReasons: string[];
+  profile: {
+    occupation?: string;
+    employmentType?: string;
+    companyName?: string;
+    designation?: string;
+    monthlySalary?: number;
+    currentCity?: string;
+    currentState?: string;
+    policeVerificationStatus?: 'pending' | 'verified' | 'rejected';
+  } | null;
+  documents: Array<{ documentType: string; verificationStatus: 'pending' | 'verified' | 'rejected' }>;
+  allDocumentsVerified: boolean;
+}
+
+export const getTenantSummary = async (applicationId: string) => {
+  const { data } = await client.get<TenantSummary>(
+    `/applications/${applicationId}/tenant-profile`
+  );
+  return data;
+};
 
 export const applyToProperty = async (propertyId: string, message?: string) => {
   const { data } = await client.post<{ application: Application }>('/applications', {

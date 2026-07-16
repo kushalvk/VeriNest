@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const Agreement = require('../models/Agreement');
+const Property = require('../models/Property');
 const RentalHistory = require('../models/RentalHistory');
 const User = require('../models/User');
 const notificationService = require('../services/notificationService');
@@ -43,12 +45,19 @@ const loadRecordForParty = async (id, userId) => {
 };
 
 // PATCH /api/rental-history/:id/complete  body: { moveOutDate }
+// Landlord-only: completing the tenancy is what puts the property back on
+// the market, so the decision belongs to the property owner.
 const completeRental = async (req, res, next) => {
   try {
-    const { record, status } = await loadRecordForParty(req.params.id, req.user.id);
+    const { record, party, status } = await loadRecordForParty(req.params.id, req.user.id);
     if (!record) {
       return res.status(status).json({
         error: status === 404 ? 'Rental record not found' : 'Forbidden: you are not a party to this rental',
+      });
+    }
+    if (party !== 'landlord') {
+      return res.status(403).json({
+        error: 'Only the landlord can mark the rental as completed',
       });
     }
 
@@ -59,6 +68,24 @@ const completeRental = async (req, res, next) => {
 
     record.moveOutDate = moveOutDate;
     await record.save();
+
+    // Tenancy is over: close the agreement and relist the property.
+    // Best-effort — the rental record is already saved; failures are logged.
+    try {
+      await Agreement.updateOne(
+        { _id: record.agreementId, status: 'active' },
+        { $set: { status: 'completed' } }
+      );
+      // Only flip occupied → available; never resurrect a soft-deleted
+      // ('inactive') listing.
+      await Property.updateOne(
+        { _id: record.propertyId, status: 'occupied' },
+        { $set: { status: 'available' } }
+      );
+    } catch (err) {
+      console.error(`[rental-history] Post-completion bookkeeping failed: ${err.message}`);
+    }
+
     return res.status(200).json({ rentalHistory: record });
   } catch (err) {
     return next(err);

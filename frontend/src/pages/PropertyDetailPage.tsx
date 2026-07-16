@@ -184,15 +184,24 @@ export default function PropertyDetailPage() {
           </section>
         )}
 
-        {/* Apply: tenants get the action (wired in a later task); guests get a login nudge */}
+        {/* Apply: tenants get the action (wired in a later task); guests get a login nudge.
+            Occupied/inactive listings (reachable via direct link) can't be applied to. */}
         <div className="mt-8">
-          {!isAuthenticated && (
+          {property.status !== 'available' && (
+            <p data-testid="not-available-note"
+              className="inline-block rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+              {property.status === 'occupied'
+                ? 'This property is currently rented and not accepting applications.'
+                : 'This listing is no longer active.'}
+            </p>
+          )}
+          {property.status === 'available' && !isAuthenticated && (
             <Link to="/login" data-testid="apply-login-link"
               className="inline-block rounded-md bg-primary-600 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-700">
               Log in to apply
             </Link>
           )}
-          {isAuthenticated && user?.role === 'tenant' && (
+          {property.status === 'available' && isAuthenticated && user?.role === 'tenant' && (
             <button type="button" data-testid="apply-button"
               className="rounded-md bg-primary-600 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-700"
               onClick={() => { setApplyOpen(true); setApplyError(null); setApplied(false); }}>
