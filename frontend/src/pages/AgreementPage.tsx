@@ -255,7 +255,7 @@ export default function AgreementPage() {
 
       {/* in-page PDF viewer — closes via ✕, backdrop click, or Escape */}
       {viewUrl && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4 py-6"
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4 py-6"
           data-testid="pdf-viewer-modal"
           onClick={(e) => { if (e.target === e.currentTarget) closeViewer(); }}>
           <div className="flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-surface shadow-xl">

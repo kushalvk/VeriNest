@@ -47,7 +47,7 @@ export default function AdminDocumentDetailModal({ document: doc, onClose, onDec
   ].filter(Boolean) as Array<{ label: string; cls: string }>;
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/60 px-4 py-8"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-8"
       data-testid="admin-doc-modal">
       <div className="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-surface shadow-xl">
         {/* header */}

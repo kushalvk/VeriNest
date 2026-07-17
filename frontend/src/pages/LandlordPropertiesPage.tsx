@@ -288,7 +288,7 @@ export default function LandlordPropertiesPage() {
 
       {/* delete confirmation dialog */}
       {deleting && (
-        <div className="fixed inset-0 z-20 flex items-center justify-center bg-slate-900/50 px-4" data-testid="delete-dialog">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4" data-testid="delete-dialog">
           <div className="w-full max-w-sm rounded-lg bg-surface p-6 shadow-xl">
             <h3 className="font-semibold text-ink">Deactivate this listing?</h3>
             <p className="mt-2 text-sm text-ink-muted">
@@ -310,7 +310,7 @@ export default function LandlordPropertiesPage() {
 
       {/* image manager dialog */}
       {imagesFor && (
-        <div className="fixed inset-0 z-20 flex items-center justify-center bg-slate-900/50 px-4" data-testid="images-dialog">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4" data-testid="images-dialog">
           <div className="w-full max-w-lg rounded-lg bg-surface p-6 shadow-xl">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-ink">Images — {imagesFor.title}</h3>

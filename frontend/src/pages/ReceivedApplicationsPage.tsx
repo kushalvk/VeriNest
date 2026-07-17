@@ -216,7 +216,7 @@ export default function ReceivedApplicationsPage() {
 
       {/* reject confirmation */}
       {rejecting && (
-        <div className="fixed inset-0 z-20 flex items-center justify-center bg-slate-900/50 px-4" data-testid="reject-dialog">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4" data-testid="reject-dialog">
           <div className="w-full max-w-sm rounded-lg bg-surface p-6 shadow-xl">
             <h3 className="font-semibold text-ink">Reject this application?</h3>
             <p className="mt-2 text-sm text-ink-muted">
@@ -255,7 +255,7 @@ export default function ReceivedApplicationsPage() {
 
       {/* create-agreement dialog: tenant/property/rent come from the application */}
       {agreementFor && (
-        <div className="fixed inset-0 z-20 flex items-center justify-center bg-slate-900/50 px-4" data-testid="agreement-dialog">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4" data-testid="agreement-dialog">
           <div className="w-full max-w-md rounded-lg bg-surface p-6 shadow-xl">
             <h3 className="font-semibold text-ink">Create rental agreement</h3>
             <p className="mt-1 text-sm text-ink-muted">

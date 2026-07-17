@@ -23,6 +23,53 @@ const MAX_SIGNATURE_BYTES = 1024 * 1024; // 1MB
 const newAgreementNumber = () =>
   `AGR-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
+// Extensionless raw public_id (see the delivery note at the upload site).
+const agreementPublicId = (agreementNumber) =>
+  `${FOLDERS.agreements}/${agreementNumber}`;
+
+// Returns the current PDF bytes for an agreement. Normally that's the stored
+// Cloudinary asset (which carries any earlier signature stamps). If the stored
+// asset can't be delivered — e.g. legacy agreements saved with a ".pdf"
+// public_id that Cloudinary 401s — regenerate a clean base PDF from the
+// agreement's own data so signing can still proceed.
+const getCurrentPdfBytes = async (agreement) => {
+  const url = agreement.agreementPdf?.url;
+  if (url) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        return { bytes: Buffer.from(await res.arrayBuffer()), regenerated: false };
+      }
+      console.warn(
+        `[agreements] Stored PDF not deliverable (HTTP ${res.status}); regenerating from source.`
+      );
+    } catch (err) {
+      console.warn(`[agreements] Stored PDF fetch failed (${err.message}); regenerating from source.`);
+    }
+  }
+
+  const [property, tenant, landlord] = await Promise.all([
+    Property.findById(agreement.propertyId),
+    User.findById(agreement.tenantId),
+    User.findById(agreement.landlordId),
+  ]);
+  const addr = property?.address || {};
+  const bytes = await generateAgreementPdf({
+    agreementNumber: agreement.agreementNumber,
+    tenantName: tenant?.fullName || 'Tenant',
+    landlordName: landlord?.fullName || 'Landlord',
+    propertyTitle: property?.title || 'Property',
+    propertyAddress: [addr.addressLine, addr.city, addr.state, addr.pincode]
+      .filter(Boolean)
+      .join(', '),
+    monthlyRent: agreement.monthlyRent,
+    deposit: agreement.deposit,
+    startDate: agreement.startDate,
+    endDate: agreement.endDate,
+  });
+  return { bytes, regenerated: true };
+};
+
 // Rental agreements must run 3–11 months (calendar-month arithmetic from startDate).
 const MIN_AGREEMENT_MONTHS = 3;
 const MAX_AGREEMENT_MONTHS = 11;
@@ -127,12 +174,14 @@ const createAgreement = async (req, res, next) => {
     });
 
     // 'raw' — Cloudinary refuses public delivery of image-typed PDFs (401).
-    // Raw assets only get a file extension if it's part of the public_id,
-    // so name it explicitly — otherwise the delivered file has no .pdf
-    // extension and browsers save it as an unknown format.
+    // IMPORTANT: the raw public_id must NOT end in ".pdf" — Cloudinary then
+    // treats the asset as a PDF and applies its PDF/ZIP delivery block, which
+    // 401s every fetch (signing re-fetches this file). The stored URL is thus
+    // extensionless; the frontend forces a ".pdf" filename + application/pdf
+    // type when viewing/downloading, so the extension is not needed here.
     const uploaded = await uploadToCloudinary(pdfBuffer, FOLDERS.agreements, {
       resourceType: 'raw',
-      publicId: `${FOLDERS.agreements}/${agreementNumber}.pdf`,
+      publicId: agreementPublicId(agreementNumber),
     });
 
     // agreementNumber collision is astronomically unlikely (timestamp +
@@ -212,18 +261,15 @@ const signAgreement = async (req, res, next) => {
       return res.status(422).json({ error: problem });
     }
 
-    // Load the current stored PDF (keeps any earlier signature stamps).
-    const pdfRes = await fetch(agreement.agreementPdf.url);
-    if (!pdfRes.ok) {
-      const err = new Error(`Could not load stored agreement PDF (HTTP ${pdfRes.status})`);
-      err.status = 502;
-      throw err;
-    }
-    const currentPdf = Buffer.from(await pdfRes.arrayBuffer());
+    // Current PDF bytes (stored asset, or regenerated if it can't be fetched).
+    const { bytes: currentPdf } = await getCurrentPdfBytes(agreement);
 
     const stamped = await stampSignature(currentPdf, signatureBase64, party);
+    // Always write to the extensionless id — deterministic, and it migrates
+    // legacy ".pdf" agreements onto a deliverable asset (the old one is left
+    // as a harmless orphan).
     const uploaded = await uploadToCloudinary(stamped, FOLDERS.agreements, {
-      publicId: agreement.agreementPdf.publicId,
+      publicId: agreementPublicId(agreement.agreementNumber),
       resourceType: 'raw',
     });
 
