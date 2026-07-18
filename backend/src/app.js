@@ -37,14 +37,18 @@ app.use(helmet());
 // Requests without an Origin header (curl, server-to-server, tests) are
 // allowed; browser requests from non-allowlisted origins get no CORS
 // headers and are blocked by the browser.
+// An Origin header never has a trailing slash or path, but the env value
+// often does (e.g. "https://app.vercel.app/") — normalize both sides so a
+// stray slash doesn't silently break CORS.
+const normalizeOrigin = (o) => o.trim().replace(/\/+$/, '');
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
   .split(',')
-  .map((o) => o.trim())
+  .map(normalizeOrigin)
   .filter(Boolean);
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(normalizeOrigin(origin))) {
         return callback(null, true);
       }
       return callback(null, false); // no CORS headers → browser blocks

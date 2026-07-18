@@ -1,7 +1,30 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../store/authStore';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
+/**
+ * Normalize the configured API base URL:
+ *  - trim and drop trailing slashes (so `${BASE_URL}/auth/...` never doubles up)
+ *  - when the app itself is served over HTTPS, never call an http:// API on a
+ *    remote host — browsers block that as mixed content. Upgrade it to https.
+ *    (localhost / 127.0.0.1 stay http for local dev.)
+ * This keeps a misconfigured `VITE_API_BASE_URL` (http instead of https) from
+ * breaking the deployed app.
+ */
+const normalizeBaseUrl = (raw: string): string => {
+  let url = (raw || '').trim().replace(/\/+$/, '');
+  if (
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'https:' &&
+    url.startsWith('http://')
+  ) {
+    const host = url.slice('http://'.length);
+    const isLocal = /^(localhost|127\.0\.0\.1)(:|\/|$)/.test(host);
+    if (!isLocal) url = `https://${host}`;
+  }
+  return url;
+};
+
+const BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL as string);
 
 export const client = axios.create({ baseURL: BASE_URL });
 
