@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import * as profileApi from '../api/profileApi';
 import { getApiError } from '../api/client';
 import AddressFields from '../components/AddressFields';
@@ -113,6 +113,10 @@ export default function TenantProfilePage() {
   const [banner, setBanner] = useState<{ tone: 'error' | 'success'; message: string } | null>(null);
   const [sameAsCurrent, setSameAsCurrent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Synchronous re-entry guard: state updates are async, so a fast double
+  // submit could fire two concurrent saves before `submitting` flips. A ref
+  // blocks the second one immediately.
+  const submitLock = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,19 +168,18 @@ export default function TenantProfilePage() {
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (submitting || mode === 'loading') return;
+    if (submitLock.current || submitting || mode === 'loading') return;
     setBanner(null);
 
     const errors = validate(form);
     setFieldErrors(errors);
     if (Object.keys(errors).length) return;
 
+    submitLock.current = true;
     setSubmitting(true);
     try {
       const payload = toPayload(form);
-      const saved = mode === 'create'
-        ? await profileApi.createTenantProfile(payload)
-        : await profileApi.updateTenantProfile(payload);
+      const saved = await profileApi.saveTenantProfile(payload);
       setForm(fromProfile(saved));
       setMode('edit');
       setBanner({ tone: 'success', message: mode === 'create' ? 'Profile created successfully.' : 'Profile updated successfully.' });
@@ -189,6 +192,7 @@ export default function TenantProfilePage() {
       setBanner({ tone: 'error', message });
       window.scrollTo({ top: 0 });
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   };

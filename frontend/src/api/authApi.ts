@@ -4,8 +4,13 @@ export interface User {
   _id: string;
   fullName: string;
   email: string;
-  phone: string;
-  role: 'tenant' | 'landlord' | 'admin';
+  // Optional: a Google-created account has no phone until the user completes
+  // their profile.
+  phone?: string;
+  // Null/undefined for a brand-new Google account that hasn't chosen a role
+  // yet — such users are routed through /select-role before any role-gated page.
+  role: 'tenant' | 'landlord' | 'admin' | null;
+  authProvider?: 'local' | 'google';
   isEmailVerified: boolean;
   accountStatus: 'pending' | 'active' | 'blocked';
 }

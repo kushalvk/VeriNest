@@ -80,6 +80,14 @@ export const updateTenantProfile = async (input: TenantProfile) => {
   return data.profile;
 };
 
+/**
+ * Save the tenant profile idempotently. PUT /tenant-profile upserts server-side
+ * (create-or-update, keyed by the caller's user id), so a single call works
+ * whether or not a profile already exists — no "already exists" (409) or "not
+ * found" (404) errors from the page guessing create-vs-edit from a stale load.
+ */
+export const saveTenantProfile = (input: TenantProfile) => updateTenantProfile(input);
+
 export const getMyLandlordProfile = () => getOrNull<LandlordProfile>('/landlord-profile/me');
 
 export const createLandlordProfile = async (input: LandlordProfile) => {
@@ -91,3 +99,6 @@ export const updateLandlordProfile = async (input: LandlordProfile) => {
   const { data } = await client.put<{ profile: LandlordProfile }>('/landlord-profile', input);
   return data.profile;
 };
+
+/** Idempotent landlord-profile save (PUT upserts) — see saveTenantProfile. */
+export const saveLandlordProfile = (input: LandlordProfile) => updateLandlordProfile(input);

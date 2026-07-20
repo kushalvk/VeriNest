@@ -1,6 +1,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const authController = require('../controllers/authController');
+const googleAuthController = require('../controllers/googleAuthController');
 const authMiddleware = require('../middlewares/authMiddleware');
 
 const router = express.Router();
@@ -42,8 +43,24 @@ const resetLimiter = rateLimit({
   },
 });
 
+// Google sign-in doubles as both login and signup, so it needs a little more
+// headroom than the 5/15min login limiter — 10/15min per IP.
+const googleLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many Google sign-in attempts. Please try again after 15 minutes.',
+    });
+  },
+});
+
 router.post('/register', registerLimiter, authController.register);
 router.post('/login', loginLimiter, authController.login);
+router.post('/google', googleLimiter, googleAuthController.googleLogin);
+router.patch('/set-role', authMiddleware, googleAuthController.setRole);
 router.post('/reset-password', resetLimiter, authController.resetPassword);
 router.post('/refresh', authController.refresh);
 router.post('/logout', authController.logout);

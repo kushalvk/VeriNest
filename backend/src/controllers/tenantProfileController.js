@@ -64,6 +64,12 @@ const getMyProfile = async (req, res, next) => {
 };
 
 // PUT /api/tenant-profile
+// Idempotent "save my profile": updates the caller's profile, or creates it if
+// none exists yet (upsert). This makes the endpoint safe for the frontend to
+// call regardless of whether it thinks a profile already exists — no 404 when
+// the client's create/edit state is stale, and no duplicate thanks to the
+// unique userId index. `userId` always comes from the JWT (sanitizeBody strips
+// any client-sent value) and the filter supplies it on insert.
 const updateMyProfile = async (req, res, next) => {
   try {
     const data = sanitizeBody(req.body);
@@ -72,13 +78,27 @@ const updateMyProfile = async (req, res, next) => {
       return res.status(422).json({ error: validationError });
     }
 
-    const profile = await TenantProfile.findOneAndUpdate(
-      { userId: req.user.id },
-      data,
-      { new: true, runValidators: true }
-    );
-    if (!profile) {
-      return res.status(404).json({ error: 'Tenant profile not found' });
+    let profile;
+    try {
+      profile = await TenantProfile.findOneAndUpdate(
+        { userId: req.user.id },
+        { $set: data, $setOnInsert: { userId: req.user.id } },
+        { returnDocument: 'after', upsert: true, runValidators: true, setDefaultsOnInsert: true }
+      );
+    } catch (err) {
+      // A duplicate-key error ON THE userId INDEX is the legitimate concurrent
+      // double-submit race: two upserts both miss the existing doc and try to
+      // insert; the unique userId index rejects the loser. The record now
+      // exists, so just apply this update to it. Any OTHER duplicate-key error
+      // (e.g. a stale/legacy unique index left on an optional field) is a real
+      // problem and must surface — never mask it as a silent success.
+      const isUserIdRace = err && err.code === 11000 && err.keyPattern && err.keyPattern.userId;
+      if (!isUserIdRace) throw err;
+      profile = await TenantProfile.findOneAndUpdate(
+        { userId: req.user.id },
+        { $set: data },
+        { returnDocument: 'after', runValidators: true }
+      );
     }
     return res.status(200).json({ profile });
   } catch (err) {

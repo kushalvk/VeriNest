@@ -44,15 +44,30 @@ const getMyProfile = async (req, res, next) => {
 };
 
 // PUT /api/landlord-profile
+// Idempotent "save my profile": updates the caller's profile, or creates it if
+// none exists yet (upsert) — safe to call regardless of the client's stale
+// create/edit state, with no 404 and no duplicate (unique userId index).
 const updateMyProfile = async (req, res, next) => {
   try {
-    const profile = await LandlordProfile.findOneAndUpdate(
-      { userId: req.user.id },
-      sanitizeBody(req.body),
-      { new: true, runValidators: true }
-    );
-    if (!profile) {
-      return res.status(404).json({ error: 'Landlord profile not found' });
+    const data = sanitizeBody(req.body);
+    let profile;
+    try {
+      profile = await LandlordProfile.findOneAndUpdate(
+        { userId: req.user.id },
+        { $set: data, $setOnInsert: { userId: req.user.id } },
+        { returnDocument: 'after', upsert: true, runValidators: true, setDefaultsOnInsert: true }
+      );
+    } catch (err) {
+      // Only a userId-index duplicate is the legitimate concurrent double-submit
+      // race — see tenantProfileController for the full rationale. Other
+      // duplicate-key errors must surface, not be masked as a silent success.
+      const isUserIdRace = err && err.code === 11000 && err.keyPattern && err.keyPattern.userId;
+      if (!isUserIdRace) throw err;
+      profile = await LandlordProfile.findOneAndUpdate(
+        { userId: req.user.id },
+        { $set: data },
+        { returnDocument: 'after', runValidators: true }
+      );
     }
     return res.status(200).json({ profile });
   } catch (err) {

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import * as authApi from '../api/authApi';
 import { getApiError } from '../api/client';
 import { AuthCard, FieldError, FormAlert, buttonClass, inputClass, labelClass } from '../components/AuthCard';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\+?\d{10,15}$/;
@@ -105,6 +106,7 @@ export default function RegisterPage() {
           {submitting ? 'Creating account…' : 'Register'}
         </button>
       </form>
+      <GoogleSignInButton />
       <p className="mt-4 text-center text-sm text-ink-muted">
         Already have an account?{' '}
         <Link to="/login" className="font-medium text-primary-600 hover:underline">Log in</Link>

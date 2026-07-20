@@ -57,6 +57,29 @@ const configureDns = () => {
   }
 };
 
+// Reconcile the collections' indexes with the current schemas exactly once per
+// process, best-effort. syncIndexes() builds any missing index AND drops any
+// index that is no longer declared in the schema — which self-heals schema
+// drift such as a leftover legacy unique index on an optional profile field
+// (would make every null value collide with E11000) or the pre-sparse `phone`
+// index on users. Runs only for the models where drift has caused real bugs;
+// never throws, so a slow/failed reindex can't block the app from serving.
+const MODELS_TO_SYNC = ['User', 'TenantProfile', 'LandlordProfile'];
+let indexesSynced = false;
+const syncModelIndexes = async () => {
+  if (indexesSynced) return;
+  indexesSynced = true;
+  for (const name of MODELS_TO_SYNC) {
+    const model = mongoose.models[name];
+    if (!model) continue; // model not registered in this entrypoint — skip
+    try {
+      await model.syncIndexes();
+    } catch (err) {
+      console.warn(`[db] Index sync for ${name} skipped: ${err.message}`);
+    }
+  }
+};
+
 const connectDB = async () => {
   const uri = process.env.MONGO_URI;
 
@@ -78,8 +101,9 @@ const connectDB = async () => {
       // should return a clean 503 rather than hit the platform timeout.
       serverSelectionTimeoutMS: 10000,
     })
-    .then((m) => {
+    .then(async (m) => {
       console.log(`[db] MongoDB connected: ${mongoose.connection.host}`);
+      await syncModelIndexes(); // best-effort; never rejects
       return m;
     })
     .catch((err) => {

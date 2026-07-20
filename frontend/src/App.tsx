@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import { AboutPage, ContactPage, PrivacyPage, ServicesPage, TermsPage } from './pages/StaticPages';
 import RegisterPage from './pages/RegisterPage';
@@ -20,6 +20,7 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminTrustScorePage from './pages/AdminTrustScorePage';
 import AgreementPage from './pages/AgreementPage';
 import RentalHistoryPage from './pages/RentalHistoryPage';
+import SelectRolePage from './pages/SelectRolePage';
 import AppShell from './components/AppShell';
 import { useAuthStore } from './store/authStore';
 import type { ReactNode } from 'react';
@@ -28,7 +29,14 @@ import type { ReactNode } from 'react';
 // level up, so this only handles the redirect.
 function RequireAuth() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const role = useAuthStore((s) => s.user?.role);
+  const location = useLocation();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  // A Google account that hasn't picked tenant/landlord yet must do so before
+  // any role-gated page. /select-role itself is exempt to avoid a redirect loop.
+  if (!role && location.pathname !== '/select-role') {
+    return <Navigate to="/select-role" replace />;
+  }
   return <Outlet />;
 }
 
@@ -77,6 +85,8 @@ function App() {
 
           {/* authenticated */}
           <Route element={<RequireAuth />}>
+            {/* one-time role picker for first-time Google accounts */}
+            <Route path="/select-role" element={<SelectRolePage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/profile" element={<ProfileByRole />} />
             <Route path="/documents" element={<RequireRole role="tenant"><DocumentsPage /></RequireRole>} />

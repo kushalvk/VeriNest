@@ -4,6 +4,7 @@ import * as authApi from '../api/authApi';
 import { getApiError } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { AuthCard, FormAlert, buttonClass, inputClass, labelClass } from '../components/AuthCard';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -63,6 +64,7 @@ export default function LoginPage() {
           {submitting ? 'Logging in…' : 'Log in'}
         </button>
       </form>
+      <GoogleSignInButton />
       <p className="mt-4 text-center text-sm text-ink-muted">
         New here?{' '}
         <Link to="/register" className="font-medium text-primary-600 hover:underline">

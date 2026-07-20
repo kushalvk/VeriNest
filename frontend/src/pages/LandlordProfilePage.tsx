@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import * as profileApi from '../api/profileApi';
 import { getApiError } from '../api/client';
 import { FormAlert, buttonClass, inputClass, labelClass } from '../components/AuthCard';
@@ -43,6 +43,8 @@ export default function LandlordProfilePage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [banner, setBanner] = useState<{ tone: 'error' | 'success'; message: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Synchronous re-entry guard against a fast double submit (see TenantProfilePage).
+  const submitLock = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,20 +73,20 @@ export default function LandlordProfilePage() {
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (submitting || mode === 'loading') return;
+    if (submitLock.current || submitting || mode === 'loading') return;
     setBanner(null);
+    submitLock.current = true;
     setSubmitting(true);
     try {
       const payload = toPayload(form);
-      const saved = mode === 'create'
-        ? await profileApi.createLandlordProfile(payload)
-        : await profileApi.updateLandlordProfile(payload);
+      const saved = await profileApi.saveLandlordProfile(payload);
       setForm(fromProfile(saved));
       setMode('edit');
       setBanner({ tone: 'success', message: mode === 'create' ? 'Profile created successfully.' : 'Profile updated successfully.' });
     } catch (err) {
       setBanner({ tone: 'error', message: getApiError(err) });
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   };
