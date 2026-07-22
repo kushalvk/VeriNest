@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const authController = require('../controllers/authController');
 const googleAuthController = require('../controllers/googleAuthController');
 const authMiddleware = require('../middlewares/authMiddleware');
+const { requireRecaptcha } = require('../middlewares/recaptchaMiddleware');
 
 const router = express.Router();
 
@@ -57,8 +58,13 @@ const googleLimiter = rateLimit({
   },
 });
 
-router.post('/register', registerLimiter, authController.register);
-router.post('/login', loginLimiter, authController.login);
+// Defense in depth: rate limiter AND reCAPTCHA are both active. The limiter
+// runs first because it's free and local — a flood gets 429'd before it can
+// turn every request into an outbound Google siteverify call. reCAPTCHA is
+// deliberately NOT applied to /refresh, /logout, /reset-password or the OTP
+// routes (token-based or already tightly rate-limited).
+router.post('/register', registerLimiter, requireRecaptcha('register'), authController.register);
+router.post('/login', loginLimiter, requireRecaptcha('login'), authController.login);
 router.post('/google', googleLimiter, googleAuthController.googleLogin);
 router.patch('/set-role', authMiddleware, googleAuthController.setRole);
 router.post('/reset-password', resetLimiter, authController.resetPassword);

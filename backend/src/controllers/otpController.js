@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const authService = require('../services/authService');
 const emailService = require('../services/emailService');
 const { generateOtp, OTP_TTL_MS } = require('../services/otpService');
 
@@ -106,9 +107,30 @@ const verifyOtp = async (req, res, next) => {
       $unset: { otp: 1, otpPurpose: 1, otpExpiresAt: 1 },
     };
     if (purpose === 'signup' || purpose === 'email_verification') {
+      // A blocked account must not be re-activated (or handed a session
+      // below) just because it can still receive email.
+      if (user.accountStatus === 'blocked') {
+        return res.status(403).json({ error: 'This account has been blocked' });
+      }
       update.$set = { isEmailVerified: true, accountStatus: 'active' };
     }
     await User.updateOne({ _id: user._id }, update);
+
+    // Signup verification doubles as the first login: the OTP just proved
+    // control of the email — the same thing a password login would prove —
+    // so hand back a session immediately instead of bouncing the brand-new
+    // user to the login form. Re-fetch so the response reflects the update
+    // (isEmailVerified/accountStatus) without the +otp selection.
+    if (purpose === 'signup') {
+      const verifiedUser = await User.findById(user._id);
+      const { accessToken, refreshToken } = await authService.issueSession(verifiedUser);
+      return res.status(200).json({
+        message: 'OTP verified successfully',
+        accessToken,
+        refreshToken,
+        user: verifiedUser,
+      });
+    }
 
     return res.status(200).json({ message: 'OTP verified successfully' });
   } catch (err) {

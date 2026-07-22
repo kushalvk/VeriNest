@@ -18,14 +18,15 @@ There is no root package.json; run npm commands inside `backend/` or `frontend/`
 ```bash
 npm run dev            # nodemon on http://localhost:5000 (health: GET /api/health)
 npm start              # node src/server.js
-npm test               # jest unit tests under src/ (e.g. src/services/__tests__/)
+npm test               # jest unit tests under src/ only (e.g. src/services/__tests__/)
 npm run test:smoke     # full E2E journey — requires local MongoDB at 127.0.0.1:27017
+npx jest tests/googleAuth.e2e.test.js --runInBand           # Google sign-in E2E (also needs local MongoDB)
 npm run seed:properties
 npx jest src/services/__tests__/trustScoreService.test.js   # single test file
 npx jest -t "name substring"                                # single test by name
 ```
 
-The smoke test (`tests/smoke.e2e.test.js`) connects to a dedicated throwaway database (`tenant-verification-smoke-test`), drops it before/after, and mocks `emailService.sendEmail` — it never touches the dev DB or SMTP. It chains every feature in order (register → OTP → profile → property → document → OCR → admin approval → trust score → application → verification request → token access), so it's the best regression check after cross-cutting changes.
+`npm test` is `jest src`, so the E2E tests under `tests/` are NOT part of it — run them explicitly. Both E2E tests connect to dedicated throwaway databases (`tenant-verification-smoke-test` / `tenant-verification-google-test`), drop them before/after, and mock external boundaries (`emailService.sendEmail`, `googleAuthService.verifyGoogleToken`) — they never touch the dev DB, SMTP, or Google. The smoke test chains every feature in order (register → OTP → profile → property → document → OCR → admin approval → trust score → application → verification request → token access), so it's the best regression check after cross-cutting changes.
 
 ### Frontend (`cd frontend`)
 
@@ -39,7 +40,7 @@ There are no frontend tests.
 
 ### Environment
 
-Copy `backend/.env.example` → `backend/.env` and `frontend/.env.example` → `frontend/.env`. `MONGO_URI` is the only hard requirement to boot. Never commit `.env` files. Frontend reads only `VITE_API_BASE_URL`.
+Copy `backend/.env.example` → `backend/.env` and `frontend/.env.example` → `frontend/.env`. `MONGO_URI` is the only hard requirement to boot. Never commit `.env` files. Frontend reads `VITE_API_BASE_URL` and `VITE_GOOGLE_CLIENT_ID` — both baked in at Vite build time (a deployed frontend needs a rebuild after changing them). CORS is an explicit allowlist from `ALLOWED_ORIGINS` (comma-separated origins, trailing slashes tolerated).
 
 ## Architecture
 
@@ -49,12 +50,16 @@ Strict `routes → controllers → services → models` flow, all mounted in `sr
 
 **Express 5 gotcha:** `req.query` is a getter, so `express-mongo-sanitize` is applied manually per-object in `app.js` (sanitize in place) — do not switch to `app.use(mongoSanitize())`, it throws.
 
+Both apps deploy to Vercel: `app.js` sets `trust proxy` to 1 so `req.ip` (used by rate-limit keyers) resolves through `X-Forwarded-For`, and the JSON body limit is 2mb because agreement signing sends a base64 signature image.
+
 ### Auth model
 
 - JWT access token (15 min) + refresh token (7 days; only a bcrypt hash is stored in the `RefreshToken` model, with a TTL index for auto-expiry). Secrets: `JWT_SECRET` / `JWT_REFRESH_SECRET`.
 - Registration requires email OTP verification (`otpService` + `emailService`).
+- **Bot protection**: `/auth/register` and `/auth/login` require a reCAPTCHA v3 `recaptchaToken`, verified server-side (`recaptchaService` + `requireRecaptcha` middleware, after the rate limiter). Action-bound (`register`/`login`), score threshold 0.5 (`RECAPTCHA_MIN_SCORE`), Google outage fails closed. With `RECAPTCHA_SECRET_KEY` unset, requests pass through with a per-request logged warning (dev fallback) — the E2E tests rely on this by deleting the var. Frontend mints tokens via `react-google-recaptcha-v3` when `VITE_RECAPTCHA_SITE_KEY` is set; the badge must stay visible (Google ToS).
+- **Google sign-in** (`POST /api/auth/google`, `googleAuthController` + `googleAuthService`): the frontend gets an ID token via `@react-oauth/google` (`GoogleSignInButton`); the backend verifies it server-side with `google-auth-library` against audience `GOOGLE_CLIENT_ID` and requires `email_verified`. A verified Google email auto-links to an existing account by email (attaches `googleId`, keeps the password and `authProvider: "local"`); otherwise a new account is created active, email-verified, password-less, and **role-less**. `RequireAuth` forces role-less users to `/select-role`, which calls `PATCH /api/auth/set-role` — one-time only (409 if a role exists), and it revokes all refresh tokens and reissues the pair because the role is baked into JWT claims (`/auth/refresh` mints from claims, not the DB). The feature degrades gracefully when unconfigured: backend returns 503, frontend hides the button. `googleId` is `select: false` and stripped in `User.toJSON`.
 - Three roles: `tenant`, `landlord`, `admin` — enforced server-side by `authMiddleware` + `roleMiddleware`, mirrored client-side by `RequireRole` in `App.tsx` (client checks are UX only; real enforcement is in the API).
-- **Frontend session persistence**: the user object + refresh token are persisted to localStorage (zustand `persist`, key `verinest-auth`) so reloads keep the session for the refresh token's 7-day lifetime; the short-lived access token is memory-only and re-minted via silent refresh after a reload. `api/client.ts` attaches the Bearer header and performs exactly one silent refresh on 401 using plain axios (to avoid interceptor recursion), then clears stored auth and redirects to `/login` on failure.
+- **Frontend session persistence**: the user object + refresh token are persisted to localStorage (zustand `persist`, key `verinest-auth`) so reloads keep the session for the refresh token's 7-day lifetime; the short-lived access token is memory-only. `api/client.ts` shares a single in-flight refresh promise (plain axios, to avoid interceptor recursion): the request interceptor pre-mints an access token when only the refresh token exists (post-reload), and the response interceptor retries exactly once on 401, clearing stored auth and redirecting to `/login` if the refresh fails. It also normalizes `VITE_API_BASE_URL` (strips trailing slashes, upgrades http→https for remote hosts when the page is https).
 
 ### Verification-access tokens (public share links)
 

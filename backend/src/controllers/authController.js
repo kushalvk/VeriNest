@@ -186,19 +186,7 @@ const login = async (req, res, next) => {
       return res.status(403).json({ error: 'This account has been blocked' });
     }
 
-    const payload = { id: user._id.toString(), role: user.role };
-    const accessToken = authService.generateAccessToken(payload);
-    const refreshToken = authService.generateRefreshToken(payload);
-
-    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
-    await RefreshToken.create({
-      userId: user._id,
-      refreshToken: hashedRefreshToken,
-      expiresAt: new Date(Date.now() + authService.REFRESH_TOKEN_TTL_MS),
-    });
-
-    user.lastLogin = new Date();
-    await user.save();
+    const { accessToken, refreshToken } = await authService.issueSession(user);
 
     return res.status(200).json({ accessToken, refreshToken, user });
   } catch (err) {

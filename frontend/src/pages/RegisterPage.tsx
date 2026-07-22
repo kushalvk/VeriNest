@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
 import * as authApi from '../api/authApi';
 import { getApiError } from '../api/client';
 import { AuthCard, FieldError, FormAlert, buttonClass, inputClass, labelClass } from '../components/AuthCard';
@@ -21,6 +22,9 @@ const validate = (form: authApi.RegisterInput) => {
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  // undefined when no VITE_RECAPTCHA_SITE_KEY / provider — form still works,
+  // the backend's dev fallback accepts tokenless requests in that case.
+  const { executeRecaptcha } = useGoogleReCaptcha();
   const [form, setForm] = useState<authApi.RegisterInput>({
     fullName: '',
     email: '',
@@ -46,7 +50,10 @@ export default function RegisterPage() {
 
     setSubmitting(true);
     try {
-      await authApi.register(form);
+      // Invisible reCAPTCHA: a fresh token per attempt (they're single-use),
+      // action name must match the backend's requireRecaptcha("register").
+      const recaptchaToken = executeRecaptcha ? await executeRecaptcha('register') : undefined;
+      await authApi.register({ ...form, recaptchaToken });
       await authApi.sendOtp(form.email, 'signup');
       navigate('/verify-otp', { state: { email: form.email, otpJustSent: true } });
     } catch (err) {

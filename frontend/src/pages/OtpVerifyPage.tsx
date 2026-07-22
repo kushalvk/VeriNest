@@ -2,12 +2,14 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import * as authApi from '../api/authApi';
 import { getApiError } from '../api/client';
+import { useAuthStore } from '../store/authStore';
 import { AuthCard, FormAlert, buttonClass, inputClass, labelClass } from '../components/AuthCard';
 
 const RESEND_COOLDOWN_S = 30;
 
 export default function OtpVerifyPage() {
   const navigate = useNavigate();
+  const setAuth = useAuthStore((s) => s.setAuth);
   const location = useLocation();
   const initial = (location.state ?? {}) as { email?: string; otpJustSent?: boolean };
 
@@ -52,8 +54,15 @@ export default function OtpVerifyPage() {
     }
     setSubmitting(true);
     try {
-      await authApi.verifyOtp(email, otp.trim(), 'signup');
-      navigate('/login', { state: { verified: true, email } });
+      const data = await authApi.verifyOtp(email, otp.trim(), 'signup');
+      if (data.accessToken && data.refreshToken && data.user) {
+        // Signup verification returns a full session — sign the new user in
+        // and take them straight to their dashboard, no manual login step.
+        setAuth({ user: data.user, accessToken: data.accessToken, refreshToken: data.refreshToken });
+        navigate('/dashboard', { replace: true });
+      } else {
+        navigate('/login', { state: { verified: true, email } });
+      }
     } catch (err) {
       setApiError(getApiError(err));
     } finally {

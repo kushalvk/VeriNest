@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
 import * as authApi from '../api/authApi';
 import { getApiError } from '../api/client';
 import { useAuthStore } from '../store/authStore';
@@ -9,6 +10,9 @@ import GoogleSignInButton from '../components/GoogleSignInButton';
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  // undefined when no VITE_RECAPTCHA_SITE_KEY / provider — form still works,
+  // the backend's dev fallback accepts tokenless requests in that case.
+  const { executeRecaptcha } = useGoogleReCaptcha();
   const setAuth = useAuthStore((s) => s.setAuth);
   const initial = (location.state ?? {}) as { verified?: boolean; email?: string };
 
@@ -27,7 +31,10 @@ export default function LoginPage() {
     }
     setSubmitting(true);
     try {
-      const { accessToken, refreshToken, user } = await authApi.login(email, password);
+      // Invisible reCAPTCHA: a fresh token per attempt (they're single-use),
+      // action name must match the backend's requireRecaptcha("login").
+      const recaptchaToken = executeRecaptcha ? await executeRecaptcha('login') : undefined;
+      const { accessToken, refreshToken, user } = await authApi.login(email, password, recaptchaToken);
       setAuth({ user, accessToken, refreshToken });
       navigate('/dashboard');
     } catch (err) {

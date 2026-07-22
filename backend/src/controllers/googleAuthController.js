@@ -1,32 +1,11 @@
-const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const RefreshToken = require('../models/RefreshToken');
 const authService = require('../services/authService');
 const googleAuthService = require('../services/googleAuthService');
 
-/**
- * Issue a fresh access + refresh token pair for a user, persist the
- * (bcrypt-hashed) refresh token, and stamp lastLogin — exactly the way the
- * email/password login controller does it, so the response shape and session
- * semantics are identical for both flows.
- */
-const issueSession = async (user) => {
-  const payload = { id: user._id.toString(), role: user.role };
-  const accessToken = authService.generateAccessToken(payload);
-  const refreshToken = authService.generateRefreshToken(payload);
-
-  const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
-  await RefreshToken.create({
-    userId: user._id,
-    refreshToken: hashedRefreshToken,
-    expiresAt: new Date(Date.now() + authService.REFRESH_TOKEN_TTL_MS),
-  });
-
-  user.lastLogin = new Date();
-  await user.save();
-
-  return { accessToken, refreshToken };
-};
+// Session creation is shared with every other sign-in path — see
+// authService.issueSession.
+const { issueSession } = authService;
 
 // POST /api/auth/google   body: { idToken }
 const googleLogin = async (req, res, next) => {

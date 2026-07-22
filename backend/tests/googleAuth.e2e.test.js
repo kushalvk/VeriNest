@@ -12,6 +12,9 @@
 process.env.NODE_ENV = 'test';
 require('dotenv').config();
 process.env.MONGO_URI = 'mongodb://127.0.0.1:27017/tenant-verification-google-test';
+// The register/login steps must not depend on Google's siteverify: with the
+// key unset the recaptcha middleware takes its logged dev fallback.
+delete process.env.RECAPTCHA_SECRET_KEY;
 
 const mongoose = require('mongoose');
 const request = require('supertest');

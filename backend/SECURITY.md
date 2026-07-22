@@ -93,6 +93,30 @@ frameguard, and referrer-policy.
 Limiters are in-memory (reset on restart) — swap to a shared store
 (e.g. Redis) when running multiple instances.
 
+## Bot protection (reCAPTCHA v3)
+
+`POST /api/auth/register` and `POST /api/auth/login` additionally require a
+reCAPTCHA v3 token (`recaptchaToken` in the body), verified server-side
+against Google's siteverify endpoint (`services/recaptchaService.js`,
+`middlewares/recaptchaMiddleware.js`). Defense in depth: this runs AFTER the
+rate limiter (which is free and local, so a flood is 429'd before it can
+trigger outbound siteverify calls) and does not replace it.
+
+- Server-side verification is authoritative — the client token is evidence,
+  never a "passed" flag.
+- The token's `action` must equal the endpoint's expected action
+  (`register`/`login`), so a token minted on one form cannot be replayed
+  against another.
+- Score threshold 0.5 by default, tunable via `RECAPTCHA_MIN_SCORE`.
+- A Google API outage fails CLOSED (requests blocked, logged distinctly from
+  bot blocks).
+- `RECAPTCHA_SECRET_KEY` unset → requests pass through, with a warning logged
+  on every request (dev fallback; must not be relied on in production).
+- Not applied to `/refresh`, `/logout`, `/reset-password`, `/auth/google`
+  (has its own Google token verification) or the OTP routes — those are
+  token-based or already tightly rate-limited. If OTP send/verify abuse is
+  observed, extending reCAPTCHA to them is a candidate follow-up.
+
 ## Error handling
 
 `errorHandler.js` is the last middleware. Clients never receive stack

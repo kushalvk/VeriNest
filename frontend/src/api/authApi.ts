@@ -23,6 +23,8 @@ export interface RegisterInput {
   phone: string;
   password: string;
   role: 'tenant' | 'landlord';
+  /** reCAPTCHA v3 token minted with action "register"; verified server-side. */
+  recaptchaToken?: string;
 }
 
 export const register = async (input: RegisterInput) => {
@@ -33,12 +35,12 @@ export const register = async (input: RegisterInput) => {
   return data;
 };
 
-export const login = async (email: string, password: string) => {
+export const login = async (email: string, password: string, recaptchaToken?: string) => {
   const { data } = await client.post<{
     accessToken: string;
     refreshToken: string;
     user: User;
-  }>('/auth/login', { email, password });
+  }>('/auth/login', { email, password, recaptchaToken });
   return data;
 };
 
@@ -55,7 +57,14 @@ export const verifyOtp = async (
   otp: string,
   purpose: OtpPurpose = 'signup'
 ) => {
-  const { data } = await client.post<{ message: string }>('/auth/otp/verify', {
+  // For purpose "signup" the backend also returns a full session (the OTP
+  // proved control of the email), so the new user is signed in immediately.
+  const { data } = await client.post<{
+    message: string;
+    accessToken?: string;
+    refreshToken?: string;
+    user?: User;
+  }>('/auth/otp/verify', {
     email,
     otp,
     purpose,

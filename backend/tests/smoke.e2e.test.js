@@ -10,6 +10,9 @@ process.env.NODE_ENV = 'test';
 require('dotenv').config();
 // Isolated test DB — overrides whatever .env points at.
 process.env.MONGO_URI = 'mongodb://127.0.0.1:27017/tenant-verification-smoke-test';
+// Never call Google's siteverify from tests: with the key unset the
+// recaptcha middleware takes its logged dev fallback and lets requests through.
+delete process.env.RECAPTCHA_SECRET_KEY;
 
 const path = require('path');
 const mongoose = require('mongoose');
