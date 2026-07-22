@@ -355,10 +355,10 @@ Auth = `Authorization: Bearer <accessToken>` unless marked *public*.
 ### Auth & OTP
 | Method | Path | Access | Purpose |
 |---|---|---|---|
-| POST | `/auth/register` | public (rate-limited + reCAPTCHA v3) | Create account (pending until OTP verified) |
+| POST | `/auth/register` | public (rate-limited) | Create account (pending until OTP verified) |
 | POST | `/auth/otp/send` | public (rate-limited) | Send OTP (`signup`, `forgot_password`, `email_verification`, `login`) |
 | POST | `/auth/otp/verify` | public | Verify OTP → activates account; for `signup` also returns access + refresh tokens (auto-login) |
-| POST | `/auth/login` | public (rate-limited + reCAPTCHA v3) | Login → access + refresh tokens |
+| POST | `/auth/login` | public (rate-limited) | Login → access + refresh tokens |
 | POST | `/auth/google` | public (rate-limited) | Verify Google ID token server-side → login/signup → access + refresh tokens |
 | PATCH | `/auth/set-role` | any authed | One-time role pick (`tenant`/`landlord`) for a new Google account (only while role is unset) |
 | POST | `/auth/refresh` | public | Exchange refresh token for new access token |

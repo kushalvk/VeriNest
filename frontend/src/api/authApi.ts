@@ -23,8 +23,6 @@ export interface RegisterInput {
   phone: string;
   password: string;
   role: 'tenant' | 'landlord';
-  /** reCAPTCHA v3 token minted with action "register"; verified server-side. */
-  recaptchaToken?: string;
 }
 
 export const register = async (input: RegisterInput) => {
@@ -35,12 +33,12 @@ export const register = async (input: RegisterInput) => {
   return data;
 };
 
-export const login = async (email: string, password: string, recaptchaToken?: string) => {
+export const login = async (email: string, password: string) => {
   const { data } = await client.post<{
     accessToken: string;
     refreshToken: string;
     user: User;
-  }>('/auth/login', { email, password, recaptchaToken });
+  }>('/auth/login', { email, password });
   return data;
 };
 
