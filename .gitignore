@@ -21,3 +21,6 @@ npm-debug.log*
 .vscode/
 .claude
 CLAUDE.md
+
+# Test / automation artifacts
+.playwright-mcp/

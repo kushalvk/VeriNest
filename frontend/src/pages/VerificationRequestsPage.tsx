@@ -28,11 +28,6 @@ export default function VerificationRequestsPage() {
   const [requests, setRequests] = useState<VerificationRequest[] | null>(null);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
-  // Raw tokens live ONLY in this component's memory, keyed by request id.
-  // They are shown once and are not re-fetchable — by design (backend
-  // stores only a hash).
-  const [issuedTokens, setIssuedTokens] = useState<Record<string, string>>({});
-  const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
     verificationApi
@@ -41,6 +36,8 @@ export default function VerificationRequestsPage() {
       .catch((err) => setError(getApiError(err)));
   }, []);
 
+  // Approving simply grants the landlord access — they view the documents
+  // inside their own dashboard, so there is no link for the tenant to share.
   const respond = async (request: VerificationRequest, action: 'approve' | 'reject') => {
     setBusyId(request._id);
     setError('');
@@ -49,24 +46,10 @@ export default function VerificationRequestsPage() {
       setRequests((list) =>
         (list ?? []).map((r) => (r._id === request._id ? { ...r, status: result.request.status } : r))
       );
-      if (action === 'approve' && result.accessToken) {
-        setIssuedTokens((t) => ({ ...t, [request._id]: result.accessToken! }));
-      }
     } catch (err) {
       setError(getApiError(err));
     } finally {
       setBusyId(null);
-    }
-  };
-
-  const copyLink = async (requestId: string, token: string) => {
-    const link = `${window.location.origin}/verify/${token}`;
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(requestId);
-      setTimeout(() => setCopied(null), 2000);
-    } catch {
-      // clipboard may be unavailable — the link is visible for manual copy
     }
   };
 
@@ -109,7 +92,7 @@ export default function VerificationRequestsPage() {
                   disabled={busyId === req._id}
                   onClick={() => void respond(req, 'approve')}
                   className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-                  Approve &amp; generate link
+                  Approve
                 </button>
                 <button type="button" data-testid="reject-request"
                   disabled={busyId === req._id}
@@ -120,25 +103,11 @@ export default function VerificationRequestsPage() {
               </div>
             )}
 
-            {issuedTokens[req._id] && (
-              <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3" data-testid="token-panel">
-                <p className="text-sm font-semibold text-amber-900">
-                  ⚠️ This access link will not be shown again
-                </p>
-                <p className="mt-1 text-xs text-amber-800">
-                  Copy it now and share it securely with the landlord. If it is lost, they will
-                  need to send a new request.
-                </p>
-                <code data-testid="access-link"
-                  className="mt-2 block break-all rounded bg-surface px-2 py-1.5 text-xs text-ink">
-                  {window.location.origin}/verify/{issuedTokens[req._id]}
-                </code>
-                <button type="button" data-testid="copy-link"
-                  onClick={() => void copyLink(req._id, issuedTokens[req._id])}
-                  className="mt-2 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">
-                  {copied === req._id ? 'Copied!' : 'Copy link'}
-                </button>
-              </div>
+            {req.status === 'approved' && (
+              <p className="mt-3 rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800" data-testid="approved-note">
+                Approved — the landlord can now view your documents from their dashboard for the
+                access window they requested.
+              </p>
             )}
           </div>
         ))}

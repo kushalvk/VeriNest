@@ -2,13 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import * as verificationApi from '../api/verificationApi';
+import SharedDocumentList from '../components/SharedDocumentList';
 import type { AccessType, SharedDocument } from '../api/verificationApi';
-
-const verificationBadge: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  verified: 'bg-green-100 text-green-800 border-green-200',
-  rejected: 'bg-red-100 text-red-700 border-red-200',
-};
 
 type PageState =
   | { kind: 'loading' }
@@ -90,32 +85,8 @@ export default function VerificationAccessPage() {
           : `Access expires ${new Date(state.expiresAt).toLocaleString()}.`}
       </p>
 
-      <div className="mt-6 space-y-3">
-        {state.documents.length === 0 && (
-          <p className="rounded-lg border border-dashed border-line-strong bg-surface p-6 text-center text-sm text-ink-faint">
-            The tenant hasn’t uploaded any documents yet.
-          </p>
-        )}
-        {state.documents.map((doc, i) => (
-          <div key={i} data-testid="shared-document"
-            className="flex items-center justify-between rounded-lg border border-line bg-surface p-4">
-            <div>
-              <p className="font-medium capitalize text-ink">
-                {doc.documentType.replace(/_/g, ' ')}
-              </p>
-              <span
-                className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${verificationBadge[doc.verificationStatus]}`}>
-                {doc.verificationStatus}
-              </span>
-            </div>
-            {doc.url && (
-              <a href={doc.url} target="_blank" rel="noreferrer"
-                className="rounded-md border border-primary-300 px-3 py-1.5 text-sm font-medium text-primary-700 hover:bg-primary-50">
-                View
-              </a>
-            )}
-          </div>
-        ))}
+      <div className="mt-6">
+        <SharedDocumentList documents={state.documents} />
       </div>
     </div>
   );

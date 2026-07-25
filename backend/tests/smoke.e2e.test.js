@@ -266,12 +266,14 @@ describe('Tenant verification E2E smoke test', () => {
     expect(res.body.application.status).toBe('accepted');
   });
 
-  step('q1. verification request blocked while all documents verified → 409', async () => {
+  step('q1. verification request allowed even when all documents are verified → 201', async () => {
     const res = await request(app)
       .post('/api/verification-requests')
       .set('Authorization', `Bearer ${S.landlordToken}`)
       .send({ applicationId: S.applicationId, accessType: '24_hours' });
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(201);
+    expect(res.body.request.status).toBe('pending');
+    S.requestId = res.body.request._id;
   });
 
   step('q2. tenant uploads a second (still-pending) document → 201', async () => {
@@ -281,16 +283,6 @@ describe('Tenant verification E2E smoke test', () => {
       .field('documentType', 'pan')
       .attach('file', FIXTURE_IMAGE);
     expect(res.status).toBe(201);
-  });
-
-  step('q. landlord creates verification request → 201', async () => {
-    const res = await request(app)
-      .post('/api/verification-requests')
-      .set('Authorization', `Bearer ${S.landlordToken}`)
-      .send({ applicationId: S.applicationId, accessType: '24_hours' });
-    expect(res.status).toBe(201);
-    expect(res.body.request.status).toBe('pending');
-    S.requestId = res.body.request._id;
   });
 
   step('r. tenant approves request → raw secure token', async () => {
@@ -317,5 +309,41 @@ describe('Tenant verification E2E smoke test', () => {
       expect(doc.extractedData).toBeUndefined();
       expect(doc._id).toBeUndefined();
     }
+  });
+
+  step('t. landlord lists their verification requests → approved & active', async () => {
+    const res = await request(app)
+      .get('/api/verification-requests/landlord')
+      .set('Authorization', `Bearer ${S.landlordToken}`);
+    expect(res.status).toBe(200);
+    const match = res.body.requests.find((r) => r._id === S.requestId);
+    expect(match).toBeDefined();
+    expect(match.status).toBe('approved');
+    expect(match.active).toBe(true);
+    // the hashed token must never be serialized to the landlord
+    expect(match.secureToken).toBeUndefined();
+  });
+
+  step('u. landlord views shared documents in-app (identity-gated) → 200', async () => {
+    const res = await request(app)
+      .get(`/api/verification-requests/${S.requestId}/documents`)
+      .set('Authorization', `Bearer ${S.landlordToken}`);
+    expect(res.status).toBe(200);
+    // same safe projection as the public token route (verified aadhaar + pending pan)
+    expect(res.body.documents.length).toBeGreaterThanOrEqual(2);
+    const statuses = res.body.documents.map((d) => d.verificationStatus);
+    expect(statuses).toContain('verified');
+    expect(statuses).toContain('pending');
+    for (const doc of res.body.documents) {
+      expect(doc.extractedData).toBeUndefined();
+      expect(doc._id).toBeUndefined();
+    }
+  });
+
+  step('v. a non-landlord cannot use the landlord documents route → 403', async () => {
+    const res = await request(app)
+      .get(`/api/verification-requests/${S.requestId}/documents`)
+      .set('Authorization', `Bearer ${S.tenantToken}`);
+    expect(res.status).toBe(403);
   });
 });

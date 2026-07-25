@@ -1,13 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
 import * as applicationApi from '../api/applicationApi';
 import * as agreementApi from '../api/agreementApi';
+import * as verificationApi from '../api/verificationApi';
 import { getApiError } from '../api/client';
 import VerificationRequestModal from '../components/VerificationRequestModal';
 import TenantProfileModal from '../components/TenantProfileModal';
+import SharedDocumentList from '../components/SharedDocumentList';
 import { trustScoreColor } from '../utils/trustScore';
 import { inputClass, labelClass } from '../components/AuthCard';
 import type { ReceivedApplication } from '../api/applicationApi';
+import type { AccessType, LandlordVerificationRequest, SharedDocument } from '../api/verificationApi';
+
+const accessWindowLabel: Record<AccessType, string> = {
+  one_time: 'One-time view',
+  '24_hours': '24-hour access',
+  '7_days': '7-day access',
+};
+
+// State of the in-app "view documents" modal fetch. `gone` is a 410 (a
+// one-time link already consumed, or the window elapsed).
+type DocsState =
+  | { kind: 'loading' }
+  | { kind: 'ready'; documents: SharedDocument[]; accessType: AccessType; expiresAt: string }
+  | { kind: 'gone'; message: string }
+  | { kind: 'error'; message: string };
 
 // Rental agreements must run 3–11 months (mirrors the server-side rule).
 const MIN_AGREEMENT_MONTHS = 3;
@@ -20,11 +38,6 @@ const addMonths = (isoDate: string, months: number) => {
 };
 
 const toInputDate = (d: Date) => d.toISOString().slice(0, 10);
-
-const allDocsVerified = (app: ReceivedApplication) =>
-  !!app.tenantMeta &&
-  app.tenantMeta.documentsTotal > 0 &&
-  app.tenantMeta.documentsVerified === app.tenantMeta.documentsTotal;
 
 const statusStyles: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
@@ -46,6 +59,31 @@ export default function ReceivedApplicationsPage() {
   const [agrForm, setAgrForm] = useState({ startDate: '', endDate: '', deposit: '' });
   const [agrBusy, setAgrBusy] = useState(false);
   const [agrError, setAgrError] = useState('');
+  // applicationId → the landlord's latest verification request for it, so an
+  // accepted row can show the in-app "view documents" access once approved.
+  const [requestByApp, setRequestByApp] = useState<Record<string, LandlordVerificationRequest>>({});
+  const [docsFor, setDocsFor] = useState<ReceivedApplication | null>(null);
+  const [docsState, setDocsState] = useState<DocsState>({ kind: 'loading' });
+
+  // Best-effort; re-run after creating/opening a request so the row reflects
+  // the new status (pending → approved, or a consumed one-time link → expired).
+  const refreshRequests = useCallback(() => {
+    verificationApi
+      .getLandlordVerificationRequests()
+      .then((reqs) => {
+        const map: Record<string, LandlordVerificationRequest> = {};
+        reqs.forEach((r) => {
+          const appId =
+            typeof r.applicationId === 'object' && r.applicationId
+              ? r.applicationId._id
+              : r.applicationId;
+          // List is newest-first, so the first seen per application wins.
+          if (appId && !map[appId]) map[appId] = r;
+        });
+        setRequestByApp(map);
+      })
+      .catch(() => { /* access affordance is best-effort */ });
+  }, []);
 
   useEffect(() => {
     applicationApi
@@ -60,7 +98,66 @@ export default function ReceivedApplicationsPage() {
         setAgreementByApp(map);
       })
       .catch(() => { /* links are best-effort */ });
-  }, []);
+    refreshRequests();
+  }, [refreshRequests]);
+
+  const openDocs = async (app: ReceivedApplication, request: LandlordVerificationRequest) => {
+    setDocsFor(app);
+    setDocsState({ kind: 'loading' });
+    try {
+      const data = await verificationApi.accessDocumentsByRequestId(request._id);
+      setDocsState({ kind: 'ready', ...data });
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 410) {
+        const message = (err.response?.data as { error?: string })?.error ?? 'Access ended';
+        setDocsState({ kind: 'gone', message });
+      } else {
+        setDocsState({ kind: 'error', message: getApiError(err) });
+      }
+    } finally {
+      // A one-time view is consumed on open — refresh so the button updates.
+      refreshRequests();
+    }
+  };
+
+  const closeDocs = () => setDocsFor(null);
+
+  // The verification affordance for an accepted application, driven by the
+  // landlord's latest request for it.
+  const renderVerificationAction = (app: ReceivedApplication) => {
+    const vreq = requestByApp[app._id];
+    const activeAccess = vreq?.status === 'approved' && vreq.active;
+
+    if (vreq?.status === 'pending') {
+      return (
+        <span data-testid="verification-pending"
+          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+          Verification requested — awaiting tenant approval
+        </span>
+      );
+    }
+    if (activeAccess) {
+      return (
+        <button type="button" data-testid="view-verified-documents"
+          onClick={() => void openDocs(app, vreq)}
+          className="rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700">
+          View verified documents · {accessWindowLabel[vreq.accessType]}
+        </button>
+      );
+    }
+    // No request yet, or a finished one (rejected / expired / one-time used).
+    const lapsed = vreq && (vreq.status === 'approved' || vreq.status === 'expired' || vreq.status === 'rejected');
+    return (
+      <div className="flex items-center gap-2">
+        {lapsed && <span className="text-xs text-ink-faint" data-testid="access-ended">Access ended</span>}
+        <button type="button" data-testid="request-verification"
+          onClick={() => setVerifyFor(app)}
+          className="rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700">
+          Request document verification
+        </button>
+      </div>
+    );
+  };
 
   const createAgreement = async () => {
     if (!agreementFor || agrBusy) return;
@@ -183,18 +280,11 @@ export default function ReceivedApplicationsPage() {
               )}
               {app.status === 'accepted' && (
                 <>
-                  {allDocsVerified(app) ? (
-                    <span data-testid="verification-done"
-                      className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
-                      ✓ Documents verified — no request needed
-                    </span>
-                  ) : (
-                    <button type="button" data-testid="request-verification"
-                      onClick={() => setVerifyFor(app)}
-                      className="rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700">
-                      Request document verification
-                    </button>
-                  )}
+                  {/* A landlord can request document verification at any time —
+                      even when the tenant's documents are already admin-verified.
+                      Once the tenant approves, this flips to an in-app "view
+                      documents" link that lasts only for the granted window. */}
+                  {renderVerificationAction(app)}
                   {agreementByApp[app._id] ? (
                     <Link to={`/agreements/${agreementByApp[app._id]}`} data-testid="view-agreement"
                       className="rounded-md border border-green-300 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-50">
@@ -242,8 +332,55 @@ export default function ReceivedApplicationsPage() {
         <VerificationRequestModal
           applicationId={verifyFor._id}
           tenantName={verifyFor.tenantId?.fullName}
-          onClose={() => setVerifyFor(null)}
+          onClose={() => { setVerifyFor(null); refreshRequests(); }}
         />
+      )}
+
+      {/* landlord views the tenant's shared documents in-app, gated by session
+          identity — only while the request is approved and within its window */}
+      {docsFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4" data-testid="landlord-docs-modal">
+          <div className="w-full max-w-lg rounded-lg bg-surface p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <h3 className="font-semibold text-ink">
+                {docsFor.tenantId?.fullName ?? 'Tenant'}’s verified documents
+              </h3>
+              <button type="button" onClick={closeDocs} aria-label="Close"
+                className="rounded p-1 text-lg leading-none text-ink-faint hover:bg-surface-muted">×</button>
+            </div>
+
+            {docsState.kind === 'loading' && (
+              <p className="mt-4 text-sm text-ink-faint">Loading documents…</p>
+            )}
+            {docsState.kind === 'ready' && (
+              <>
+                <p className="mt-1 text-sm text-ink-muted">
+                  {docsState.accessType === 'one_time'
+                    ? 'One-time view — this will not be available again after you close it.'
+                    : `Access expires ${new Date(docsState.expiresAt).toLocaleString()}.`}
+                </p>
+                <div className="mt-4">
+                  <SharedDocumentList documents={docsState.documents} />
+                </div>
+              </>
+            )}
+            {docsState.kind === 'gone' && (
+              <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="docs-gone">
+                {docsState.message}. Send a new verification request to view the documents again.
+              </p>
+            )}
+            {docsState.kind === 'error' && (
+              <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {docsState.message}
+              </p>
+            )}
+
+            <button type="button" onClick={closeDocs}
+              className="mt-5 w-full rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface-muted">
+              Close
+            </button>
+          </div>
+        </div>
       )}
 
       {profileFor && (

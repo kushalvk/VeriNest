@@ -58,15 +58,9 @@ const createRequest = async (req, res, next) => {
       });
     }
 
-    // If the admin has already verified every document, there is nothing
-    // left to verify — the landlord sees "verification done" instead.
-    const docs = await Document.find({ tenantId: application.tenantId })
-      .select('verificationStatus');
-    if (docs.length > 0 && docs.every((d) => d.verificationStatus === 'verified')) {
-      return res.status(409).json({
-        error: 'All of this tenant\'s documents are already verified — no verification request is needed',
-      });
-    }
+    // A landlord may request document verification at any time, even when the
+    // tenant's documents are already admin-verified — the request simply lets
+    // them view the documents through the tenant-approved access link.
 
     const request = await VerificationRequest.create({
       landlordId: req.user.id,
@@ -232,6 +226,105 @@ const listMyRequests = async (req, res, next) => {
   }
 };
 
+// GET /api/verification-requests/landlord — the landlord's own requests, each
+// annotated with an `active` flag so the UI can show/hide the in-app access
+// link (and drop it once the window closes or a one-time link is consumed).
+// secureToken is select:false, so it is never serialized here.
+const listLandlordRequests = async (req, res, next) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+
+    const filter = { landlordId: req.user.id };
+    const [requests, total] = await Promise.all([
+      VerificationRequest.find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate({
+          path: 'applicationId',
+          select: 'propertyId',
+          populate: { path: 'propertyId', select: 'title address.city' },
+        }),
+      VerificationRequest.countDocuments(filter),
+    ]);
+
+    const now = Date.now();
+    const withActive = requests.map((r) => ({
+      ...r.toObject(),
+      active:
+        r.status === 'approved' &&
+        !!r.expiresAt &&
+        r.expiresAt.getTime() > now &&
+        !(r.accessType === 'one_time' && r.viewedAt),
+    }));
+
+    return res.status(200).json({
+      requests: withActive,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// Shared by both the public token route and the landlord identity route: given
+// an already-loaded, already-authorized request that is status 'approved',
+// enforce the access window (flip to expired past the deadline), claim the
+// single view for one_time links atomically, audit the access, and return the
+// safe document projection. Returns { status, body } for the caller to send —
+// deliberately not throwing, so 410s don't hit the global error logger.
+const resolveApprovedRequestDocuments = async (request, req) => {
+  if (!request.expiresAt || request.expiresAt < new Date()) {
+    request.status = 'expired';
+    await request.save();
+    return { status: 410, body: { error: 'Access expired' } };
+  }
+
+  if (request.accessType === 'one_time') {
+    // Atomic claim: even two concurrent requests can't both win this.
+    const claimed = await VerificationRequest.findOneAndUpdate(
+      { _id: request._id, status: 'approved', viewedAt: null },
+      { $set: { viewedAt: new Date(), status: 'expired' } },
+      { new: true }
+    );
+    if (!claimed) {
+      return { status: 410, body: { error: 'Access already used' } };
+    }
+  } else {
+    request.viewedAt = new Date();
+    await request.save();
+  }
+
+  const documents = await Document.find({ tenantId: request.tenantId });
+  // Only non-sensitive fields — never extractedData or internal metadata.
+  const safeDocuments = documents.map((d) => ({
+    documentType: d.documentType,
+    url: d.cloudinary?.url,
+    verificationStatus: d.verificationStatus,
+  }));
+
+  try {
+    await auditService.logAction({
+      userId: request.landlordId,
+      action: 'verification_access',
+      module: 'verification',
+      req,
+    });
+  } catch (err) {
+    console.error(`[verification] Audit log failed: ${err.message}`);
+  }
+
+  return {
+    status: 200,
+    body: {
+      accessType: request.accessType,
+      expiresAt: request.expiresAt,
+      documents: safeDocuments,
+    },
+  };
+};
+
 // GET /api/verification/access/:token — public, protected solely by token
 const accessDocuments = async (req, res, next) => {
   try {
@@ -255,54 +348,59 @@ const accessDocuments = async (req, res, next) => {
     if (request.status !== 'approved') {
       return res.status(403).json({ error: 'Access not granted' });
     }
-    if (!request.expiresAt || request.expiresAt < new Date()) {
-      request.status = 'expired';
-      await request.save();
-      return res.status(410).json({ error: 'Access expired' });
-    }
 
-    if (request.accessType === 'one_time') {
-      // Atomic claim: even two concurrent requests can't both win this.
-      const claimed = await VerificationRequest.findOneAndUpdate(
-        { _id: request._id, status: 'approved', viewedAt: null },
-        { $set: { viewedAt: new Date(), status: 'expired' } },
-        { new: true }
-      );
-      if (!claimed) {
-        return res.status(410).json({ error: 'Access already used' });
-      }
-    } else {
-      request.viewedAt = new Date();
-      await request.save();
-    }
-
-    const documents = await Document.find({ tenantId: request.tenantId });
-    // Only non-sensitive fields — never extractedData or internal metadata.
-    const safeDocuments = documents.map((d) => ({
-      documentType: d.documentType,
-      url: d.cloudinary?.url,
-      verificationStatus: d.verificationStatus,
-    }));
-
-    try {
-      await auditService.logAction({
-        userId: request.landlordId,
-        action: 'verification_access',
-        module: 'verification',
-        req,
-      });
-    } catch (err) {
-      console.error(`[verification] Audit log failed: ${err.message}`);
-    }
-
-    return res.status(200).json({
-      accessType: request.accessType,
-      expiresAt: request.expiresAt,
-      documents: safeDocuments,
-    });
+    const result = await resolveApprovedRequestDocuments(request, req);
+    return res.status(result.status).json(result.body);
   } catch (err) {
     return next(err);
   }
 };
 
-module.exports = { createRequest, respondToRequest, listMyRequests, accessDocuments };
+// GET /api/verification-requests/:id/documents — the landlord views the shared
+// documents in-app, gated by their session identity rather than the public
+// bearer token. Same access-window / one-time semantics as the token route.
+const accessDocumentsForLandlord = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Verification request not found' });
+    }
+
+    const request = await VerificationRequest.findById(id);
+    if (!request) {
+      return res.status(404).json({ error: 'Verification request not found' });
+    }
+    if (request.landlordId.toString() !== req.user.id) {
+      return res
+        .status(403)
+        .json({ error: 'Forbidden: this request is not addressed to you' });
+    }
+
+    if (request.status === 'expired') {
+      const message =
+        request.accessType === 'one_time' && request.viewedAt
+          ? 'Access already used'
+          : 'Access expired';
+      return res.status(410).json({ error: message });
+    }
+    if (request.status !== 'approved') {
+      return res
+        .status(400)
+        .json({ error: 'This request has not been approved yet' });
+    }
+
+    const result = await resolveApprovedRequestDocuments(request, req);
+    return res.status(result.status).json(result.body);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+module.exports = {
+  createRequest,
+  respondToRequest,
+  listMyRequests,
+  listLandlordRequests,
+  accessDocuments,
+  accessDocumentsForLandlord,
+};

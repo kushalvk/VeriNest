@@ -64,7 +64,14 @@ const configureDns = () => {
 // (would make every null value collide with E11000) or the pre-sparse `phone`
 // index on users. Runs only for the models where drift has caused real bugs;
 // never throws, so a slow/failed reindex can't block the app from serving.
-const MODELS_TO_SYNC = ['User', 'TenantProfile', 'LandlordProfile'];
+//
+// `Application` is here because an older schema used `tenant`/`property` field
+// names with a UNIQUE compound index; after the rename to `tenantId`/
+// `propertyId` that `tenant_1_property_1` unique index lingered in the DB.
+// Current docs lack those fields, so all of them index as {null,null} and the
+// SECOND application anywhere collides with E11000 — surfacing to users as a
+// bogus "you've already applied" 409. syncIndexes drops that stale index.
+const MODELS_TO_SYNC = ['User', 'TenantProfile', 'LandlordProfile', 'Application'];
 let indexesSynced = false;
 const syncModelIndexes = async () => {
   if (indexesSynced) return;

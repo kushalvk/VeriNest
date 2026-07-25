@@ -44,8 +44,8 @@ export default function VerificationRequestModal({ applicationId, tenantName, on
             <p className="text-4xl">📨</p>
             <h3 className="mt-3 font-semibold text-ink">Request sent</h3>
             <p className="mt-1 text-sm text-ink-muted">
-              {tenantName ?? 'The tenant'} will be notified. Once they approve, they will share a
-              secure access link with you.
+              {tenantName ?? 'The tenant'} will be notified. Once they approve, you can view their
+              documents here from this application.
             </p>
             <button type="button" onClick={onClose}
               className="mt-4 w-full rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700">

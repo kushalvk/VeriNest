@@ -179,6 +179,17 @@ const login = async (req, res, next) => {
     const user = await User.findOne({ email: email.toLowerCase() }).select(
       '+password'
     );
+    // A Google-created account has no password, so email/password login can
+    // never match — returning the generic "invalid email or password" just
+    // confuses the owner of a real account. Point them at Google sign-in
+    // instead. (Only fires for google-provisioned accounts with no local
+    // password; ordinary wrong-password attempts still get the generic error.)
+    if (user && user.authProvider === 'google' && !user.password) {
+      return res.status(409).json({
+        error:
+          'This account was created with Google. Please use “Continue with Google” to sign in.',
+      });
+    }
     if (!user || !(await authService.comparePassword(password, user.password))) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
