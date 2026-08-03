@@ -53,6 +53,26 @@ multiple accounts without them do not collide.
 > on next boot), or run `User.syncIndexes()`. Fresh databases build the sparse
 > index automatically.
 
+### Admin account actions (`/api/admin/users`)
+
+- Blocking sets `accountStatus: "blocked"` — rejected by **every** sign-in path
+  (password login, OTP login, Google) — and **deletes the user's refresh
+  tokens**, so an already-issued access token can survive at most its 15-minute
+  lifetime instead of rolling over indefinitely. There is no token
+  denylist; that 15-minute window is the accepted exposure.
+- An admin may not block or delete **their own account** or **another admin**
+  (403 either way), so the panel cannot be used to lock out administration.
+- Deletion is refused with **409** while the user is party to an `active`
+  agreement — that record belongs to the counterparty too. Otherwise the
+  account and the records it owns are removed; **audit logs are deliberately
+  retained**, and Cloudinary assets are left in place (unreachable once their
+  records are gone, and deletion is not reversible).
+- `status` is restricted to `active`/`blocked`: `pending` belongs to the
+  signup/OTP flow and is not settable by hand.
+- Search terms are regex-escaped before being compiled into a `RegExp`
+  (same treatment as the tenant directory), so a user-supplied `.*` matches
+  literally rather than scanning the collection.
+
 ## CORS
 
 Explicit allowlist from `ALLOWED_ORIGINS` (comma-separated env var),

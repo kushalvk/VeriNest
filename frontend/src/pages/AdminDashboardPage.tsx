@@ -98,9 +98,14 @@ export default function AdminDashboardPage() {
       <div className="mx-auto mt-8 max-w-4xl px-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-ink">Document verification</h1>
-          <Link to="/admin/trust-score" className="text-sm font-medium text-primary-600 hover:underline">
-            Trust score tool →
-          </Link>
+          <div className="flex gap-4">
+            <Link to="/admin/users" className="text-sm font-medium text-primary-600 hover:underline">
+              Users →
+            </Link>
+            <Link to="/admin/trust-score" className="text-sm font-medium text-primary-600 hover:underline">
+              Trust score tool →
+            </Link>
+          </div>
         </div>
 
         {toast && (

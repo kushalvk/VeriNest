@@ -21,12 +21,13 @@ npm start              # node src/server.js
 npm test               # jest unit tests under src/ only (e.g. src/services/__tests__/)
 npm run test:smoke     # full E2E journey — requires local MongoDB at 127.0.0.1:27017
 npx jest tests/googleAuth.e2e.test.js --runInBand           # Google sign-in E2E (also needs local MongoDB)
+npx jest tests/adminUsers.e2e.test.js --runInBand           # admin user management E2E (also needs local MongoDB)
 npm run seed:properties
 npx jest src/services/__tests__/trustScoreService.test.js   # single test file
 npx jest -t "name substring"                                # single test by name
 ```
 
-`npm test` is `jest src`, so the E2E tests under `tests/` are NOT part of it — run them explicitly. Both E2E tests connect to dedicated throwaway databases (`tenant-verification-smoke-test` / `tenant-verification-google-test`), drop them before/after, and mock external boundaries (`emailService.sendEmail`, `googleAuthService.verifyGoogleToken`) — they never touch the dev DB, SMTP, or Google. The smoke test chains every feature in order (register → OTP → profile → property → document → OCR → admin approval → trust score → application → verification request → token access), so it's the best regression check after cross-cutting changes.
+`npm test` is `jest src`, so the E2E tests under `tests/` are NOT part of it — run them explicitly. Each E2E test connects to its own dedicated throwaway database (`tenant-verification-smoke-test` / `-google-test` / `-admin-users-test`), drops it before/after, and mocks external boundaries (`emailService.sendEmail`, `googleAuthService.verifyGoogleToken`) — they never touch the dev DB, SMTP, or Google. The smoke test chains every feature in order (register → OTP → profile → property → document → OCR → admin approval → trust score → application → verification request → token access), so it's the best regression check after cross-cutting changes.
 
 ### Frontend (`cd frontend`)
 
@@ -67,6 +68,10 @@ Landlord verification of a tenant works via a share link `/verify/:token`: 256-b
 ### Document pipeline
 
 Upload (multer, memory) → magic-byte check in `utils/fileSignature.js` (never trust extension/mimetype) → Cloudinary (`cloudinaryService`, folders per type) → OCR via tesseract.js (`ocrService`) → fraud heuristics (`fraudDetectionService`) → admin review (`adminDocumentController`) → verified docs feed the trust score.
+
+### Admin user management
+
+`adminUserController` (`/api/admin/users`, admin-only) backs the `/admin/users` page: a paginated directory of every account with name/email/phone search and role/status filters, per-user activity stats, block/unblock, and delete. Blocking is the reversible tool — it flips `accountStatus` to `blocked` (rejected by all three sign-in paths) and deletes the user's `RefreshToken` records so live sessions die within the access token's 15 minutes. Delete cascades to the records the user owns and is refused (409) while they are party to an `active` agreement; audit logs are kept and Cloudinary assets are left behind. An admin can never block or delete themselves or another admin. See `backend/SECURITY.md` for the full policy.
 
 ### Trust score
 

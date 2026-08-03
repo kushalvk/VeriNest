@@ -18,6 +18,7 @@ import VerificationRequestsPage from './pages/VerificationRequestsPage';
 import VerificationAccessPage from './pages/VerificationAccessPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminTrustScorePage from './pages/AdminTrustScorePage';
+import AdminUsersPage from './pages/AdminUsersPage';
 import AgreementPage from './pages/AgreementPage';
 import RentalHistoryPage from './pages/RentalHistoryPage';
 import SelectRolePage from './pages/SelectRolePage';
@@ -96,6 +97,7 @@ function App() {
             <Route path="/verification-requests" element={<RequireRole role="tenant"><VerificationRequestsPage /></RequireRole>} />
             <Route path="/admin" element={<RequireRole role="admin"><AdminDashboardPage /></RequireRole>} />
             <Route path="/admin/trust-score" element={<RequireRole role="admin"><AdminTrustScorePage /></RequireRole>} />
+            <Route path="/admin/users" element={<RequireRole role="admin"><AdminUsersPage /></RequireRole>} />
             {/* party checks happen in the controller/page by identity */}
             <Route path="/agreements/:id" element={<AgreementPage />} />
             <Route path="/rental-history" element={<RentalHistoryPage />} />

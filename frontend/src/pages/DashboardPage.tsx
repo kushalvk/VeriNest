@@ -14,6 +14,7 @@ import {
   Search,
   ShieldCheck,
   UserRound,
+  Users,
 } from 'lucide-react';
 import * as profileApi from '../api/profileApi';
 import * as documentApi from '../api/documentApi';
@@ -119,6 +120,7 @@ interface AdminStats {
   pending: number | null;
   verified: number | null;
   rejected: number | null;
+  users: { total: number; blocked: number } | null;
 }
 
 /* ---------- page ---------- */
@@ -190,16 +192,24 @@ export default function DashboardPage() {
           } : null,
         });
       } else if (role === 'admin') {
-        const [pending, verified, rejected] = await Promise.allSettled([
+        const [pending, verified, rejected, users, blocked] = await Promise.allSettled([
           adminApi.getDocuments('pending'),
           adminApi.getDocuments('verified'),
           adminApi.getDocuments('rejected'),
+          adminApi.listUsers({}),
+          adminApi.listUsers({ status: 'blocked' }),
         ]);
         if (cancelled) return;
+        const userTotal = val(users)?.pagination.total;
         setAdmin({
           pending: val(pending)?.pagination.total ?? null,
           verified: val(verified)?.pagination.total ?? null,
           rejected: val(rejected)?.pagination.total ?? null,
+          // only counts are used here — the pages themselves are discarded
+          users: userTotal === undefined ? null : {
+            total: userTotal,
+            blocked: val(blocked)?.pagination.total ?? 0,
+          },
         });
       }
     };
@@ -310,6 +320,8 @@ export default function DashboardPage() {
               <>
                 <ActionCard to="/admin" icon={FileText} title="Document review"
                   text="Work the verification queue — approve clean documents, reject with remarks." />
+                <ActionCard to="/admin/users" icon={Users} title="Manage users"
+                  text="Every tenant and landlord account — inspect activity, block or remove." />
                 <ActionCard to="/admin/trust-score" icon={ShieldCheck} title="Trust scores"
                   text="Recalculate a tenant's score and audit the reasons behind it." />
                 <ActionCard to="/properties" icon={Search} title="Browse listings"
@@ -374,6 +386,11 @@ function adminStatsCards(s: AdminStats | null) {
         hint="Documents approved to date." />
       <StatCard icon={CircleX} label="Rejected" value={s?.rejected ?? null}
         hint="Sent back with reviewer remarks." />
+      <StatCard icon={Users} label="Users" value={s?.users?.total ?? null}
+        hint={s?.users && s.users.blocked > 0
+          ? `${s.users.blocked} account${s.users.blocked > 1 ? 's' : ''} currently blocked`
+          : 'Tenants, landlords and admins on the platform.'}
+        attention={Boolean(s?.users && s.users.blocked > 0)} />
     </>
   );
 }

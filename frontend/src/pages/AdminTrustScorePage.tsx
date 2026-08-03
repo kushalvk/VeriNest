@@ -93,9 +93,14 @@ export default function AdminTrustScorePage() {
       <div className="mx-auto mt-8 max-w-3xl px-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-ink">Trust scores</h1>
-          <Link to="/admin" className="text-sm font-medium text-primary-600 hover:underline dark:text-primary-400">
-            ← Document review
-          </Link>
+          <div className="flex gap-4">
+            <Link to="/admin" className="text-sm font-medium text-primary-600 hover:underline dark:text-primary-400">
+              ← Document review
+            </Link>
+            <Link to="/admin/users" className="text-sm font-medium text-primary-600 hover:underline dark:text-primary-400">
+              Users →
+            </Link>
+          </div>
         </div>
         <p className="mt-1 text-sm text-ink-muted">
           Every tenant on the platform, with their current stored score. Recalculating

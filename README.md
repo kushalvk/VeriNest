@@ -383,6 +383,19 @@ Auth = `Authorization: Bearer <accessToken>` unless marked *public*.
 | GET | `/admin/documents/users/:tenantId` | admin | All documents of one user |
 | PATCH | `/admin/documents/:id` | admin | Verify or reject (+ remarks) |
 
+### Admin — user management
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | `/admin/users?search=&role=&status=&page=&limit=` | admin | User directory (tenants, landlords, admins; name/email/phone search) |
+| GET | `/admin/users/:id` | admin | One account with its profile and activity counts |
+| PATCH | `/admin/users/:id/status` | admin | Block / reactivate (`{ status: "active"\|"blocked", reason? }`) |
+| DELETE | `/admin/users/:id` | admin | Delete the account and every record it owns |
+
+Blocking sets `accountStatus: "blocked"` (rejected by every sign-in path) and deletes
+the user's refresh tokens, so live sessions end within the access token's 15-minute
+lifetime. Deletion is refused (409) while the user is party to an active agreement,
+and an admin can neither block nor delete themselves or another admin.
+
 ### Properties
 | Method | Path | Access | Purpose |
 |---|---|---|---|
@@ -463,7 +476,7 @@ templates), `shadow-card` elevation, documented radius conventions.
 | Public | `/` (landing), `/properties`, `/properties/:id`, `/about`, `/services`, `/contact`, `/privacy`, `/terms`, `/login`, `/register`, `/verify-otp`, `/verify/:token` (share-link viewer) |
 | Tenant | `/dashboard`, `/profile`, `/documents`, `/my-applications`, `/verification-requests`, `/rental-history`, `/agreements/:id` |
 | Landlord | `/dashboard`, `/profile`, `/my-properties`, `/received-applications`, `/rental-history`, `/agreements/:id` |
-| Admin | `/admin` (document review), `/admin/trust-score` |
+| Admin | `/admin` (document review), `/admin/users`, `/admin/trust-score` |
 
 Notable components: `Header` (role-aware nav, user menu, mobile hamburger), `Footer`,
 `SignatureCapture` (canvas pad with blank-signature guard), `NotificationBell` (polling +
