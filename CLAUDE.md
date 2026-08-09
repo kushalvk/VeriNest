@@ -23,11 +23,13 @@ npm run test:smoke     # full E2E journey — requires local MongoDB at 127.0.0.
 npx jest tests/googleAuth.e2e.test.js --runInBand           # Google sign-in E2E (also needs local MongoDB)
 npx jest tests/adminUsers.e2e.test.js --runInBand           # admin user management E2E (also needs local MongoDB)
 npm run seed:properties
+npm run seed:demo                                           # create/reset the public guest demo accounts
+npx jest tests/demoLogin.e2e.test.js --runInBand            # demo accounts E2E (also needs local MongoDB)
 npx jest src/services/__tests__/trustScoreService.test.js   # single test file
 npx jest -t "name substring"                                # single test by name
 ```
 
-`npm test` is `jest src`, so the E2E tests under `tests/` are NOT part of it — run them explicitly. Each E2E test connects to its own dedicated throwaway database (`tenant-verification-smoke-test` / `-google-test` / `-admin-users-test`), drops it before/after, and mocks external boundaries (`emailService.sendEmail`, `googleAuthService.verifyGoogleToken`) — they never touch the dev DB, SMTP, or Google. The smoke test chains every feature in order (register → OTP → profile → property → document → OCR → admin approval → trust score → application → verification request → token access), so it's the best regression check after cross-cutting changes.
+`npm test` is `jest src`, so the E2E tests under `tests/` are NOT part of it — run them explicitly. Each E2E test connects to its own dedicated throwaway database (`tenant-verification-smoke-test` / `-google-test` / `-admin-users-test` / `-demo-test`), drops it before/after, and mocks external boundaries (`emailService.sendEmail`, `googleAuthService.verifyGoogleToken`) — they never touch the dev DB, SMTP, or Google. The smoke test chains every feature in order (register → OTP → profile → property → document → OCR → admin approval → trust score → application → verification request → token access), so it's the best regression check after cross-cutting changes.
 
 ### Frontend (`cd frontend`)
 
@@ -68,6 +70,10 @@ Landlord verification of a tenant works via a share link `/verify/:token`: 256-b
 ### Document pipeline
 
 Upload (multer, memory) → magic-byte check in `utils/fileSignature.js` (never trust extension/mimetype) → Cloudinary (`cloudinaryService`, folders per type) → OCR via tesseract.js (`ocrService`) → fraud heuristics (`fraudDetectionService`) → admin review (`adminDocumentController`) → verified docs feed the trust score.
+
+### Public demo accounts
+
+`services/demoService.js` owns two fixed guest logins (`demo.tenant@…` / `demo.landlord@…`, `isDemo: true`, roles hardcoded to tenant/landlord so they can never be admin). They are ordinary accounts — every feature really works and really writes — but `authController.login` calls `resetDemoWorkspace()` before issuing the session whenever `user.isDemo`, which deletes everything the two accounts own and reseeds one curated snapshot. Both accounts reset together (their seeded application/verification request are shared records). `GET /api/auth/demo-accounts` serves the credentials publicly and returns `[]` until seeded. `LoginPage` reads it through the `useDemoAccounts` hook *before* rendering, because the count decides the layout: with demo accounts the page is two columns (`AuthCard`'s optional `aside` prop — `DemoLoginPanel` left, login form right, stacked form-first below `lg`), without them it stays the plain single card. Clicking a demo button fills the real email/password fields and submits them through the ordinary login path — `LoginPage` owns the credentials, the panel only calls `onUseAccount`. `AppShell` shows a demo-mode banner while `user.isDemo`. Seed/rebuild with `npm run seed:demo`.
 
 ### Admin user management
 

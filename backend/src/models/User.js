@@ -59,6 +59,11 @@ const userSchema = new mongoose.Schema(
       enum: ['pending', 'active', 'blocked'],
       default: 'pending',
     },
+    // Public "try it out" account (see services/demoService.js). Its whole
+    // workspace is wiped and reseeded on every demo sign-in, so nothing real
+    // may ever live on one. Serialized on purpose: the frontend reads it to
+    // show the demo-mode banner.
+    isDemo: { type: Boolean, default: false },
     lastLogin: { type: Date },
     refreshToken: { type: String, select: false },
   },

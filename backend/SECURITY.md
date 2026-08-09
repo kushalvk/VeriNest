@@ -73,6 +73,32 @@ multiple accounts without them do not collide.
   (same treatment as the tenant directory), so a user-supplied `.*` matches
   literally rather than scanning the collection.
 
+### Public demo accounts (`isDemo: true`)
+
+Two advertised guest logins (tenant + landlord) let anyone explore the product
+without registering. Their passwords are deliberately public — `GET
+/api/auth/demo-accounts` serves them to the login page — so the threat model is
+"assume everyone has these credentials":
+
+- **Role is fixed in code** (`services/demoService.js`), always `tenant` or
+  `landlord`. A demo account can never be an admin, so the public credentials
+  grant no access to other users' data, the admin panel, or document review.
+- **They are otherwise ordinary accounts**: no write-blocking, no special
+  bypasses, and every authorization check applies to them exactly as it does to
+  a real user. The containment is scope, not privilege.
+- **The workspace is destroyed on every demo sign-in** — `resetDemoWorkspace()`
+  runs before the session is issued and deletes all records the two accounts
+  own (profiles, properties, documents, applications, agreements, verification
+  requests, notifications, trust-score history), then reseeds a fixed snapshot.
+  Anything a visitor uploads is therefore short-lived, and nothing real may
+  ever be stored on these accounts. The UI carries a standing banner saying so.
+- The reset is best-effort: if it throws, login still proceeds (logged as
+  `[demo] Workspace reset failed`) rather than locking visitors out.
+- Concurrent demo sessions share one workspace, so one visitor's sign-in wipes
+  another's in-progress data. Accepted for a public demo.
+- Cloudinary assets uploaded by demo users are left behind when their records
+  are wiped, exactly as with admin-deleted users.
+
 ## CORS
 
 Explicit allowlist from `ALLOWED_ORIGINS` (comma-separated env var),

@@ -32,6 +32,7 @@ in one place.
    - [Rental history & two-way ratings](#7-rental-history--two-way-ratings)
    - [Notifications & branded emails](#8-notifications--branded-emails)
    - [AI chat assistant](#9-ai-chat-assistant)
+   - [Demo accounts](#10-demo-accounts)
 7. [API reference](#api-reference)
 8. [Data models](#data-models)
 9. [Frontend](#frontend)
@@ -340,6 +341,29 @@ trust score, …) and instructs the model to answer solely from it — questions
 users are refused by design. Rate-limited per user; 503/429 states are surfaced
 gracefully in the UI.
 
+### 10. Demo accounts
+
+Two fixed guest logins — **demo tenant** and **demo landlord** — let anyone explore the
+platform without signing up. They are ordinary accounts (`isDemo: true`), so every feature
+genuinely works: uploads, applications, agreements, the chat assistant. What keeps them
+safe is the reset: **on every demo sign-in the backend wipes and rebuilds their entire
+workspace** from one curated snapshot (`services/demoService.js`) — profiles, 3 listings,
+2 documents, 2 applications, a pending verification request, notifications and a real
+trust-score pass. Whatever the previous visitor did is gone.
+
+- Credentials are served publicly by `GET /api/auth/demo-accounts`. When they exist the login
+  page becomes two columns — demo accounts on the left, the normal login form on the right
+  (stacked with the form first on phones); when they don't, it stays the plain single card
+  (same graceful-degradation pattern as the Google button).
+- Choosing an account **autofills the real login form** and submits it, so it's obvious which
+  credentials were used and they stay on screen if anything fails.
+- While signed in as a demo user the app shows a standing **demo-mode banner**.
+- Two people demoing at once share one workspace; the second sign-in resets the first one's
+  data mid-session. That's the accepted trade-off — nothing real may ever live here.
+- Create/rebuild them with `npm run seed:demo`; override the passwords with
+  `DEMO_TENANT_PASSWORD` / `DEMO_LANDLORD_PASSWORD`. Demo accounts are always
+  `tenant`/`landlord` — never `admin`.
+
 ---
 
 ## API reference
@@ -364,6 +388,7 @@ Auth = `Authorization: Bearer <accessToken>` unless marked *public*.
 | POST | `/auth/refresh` | public | Exchange refresh token for new access token |
 | POST | `/auth/logout` | public | Revoke refresh token |
 | GET | `/auth/me` | any authed | Current token payload (id, role) |
+| GET | `/auth/demo-accounts` | public | Guest demo credentials for the login page (empty list until seeded) |
 
 ### Profiles
 | Method | Path | Access | Purpose |
@@ -448,7 +473,7 @@ and an admin can neither block nor delete themselves or another admin.
 
 | Model | Purpose / notable fields |
 |---|---|
-| `User` | fullName, email, phone, bcrypt password, role, OTP fields, accountStatus; sensitive fields are `select: false` and stripped from JSON |
+| `User` | fullName, email, phone, bcrypt password, role, OTP fields, accountStatus, `isDemo`; sensitive fields are `select: false` and stripped from JSON |
 | `RefreshToken` | bcrypt hash of refresh JWT, TTL index auto-expiry |
 | `TenantProfile` / `LandlordProfile` | addresses, employment/salary, police verification status, etc. |
 | `Document` | type, Cloudinary ref, verificationStatus, OCR `extractedData`, remarks, verifiedBy/At |
@@ -545,7 +570,18 @@ http://localhost:5173.
 cd backend && npm run seed:properties
 ```
 
-### 5. Try the full flow
+### 5. Optional: seed the guest demo accounts
+
+```bash
+cd backend && npm run seed:demo
+```
+
+This creates (or rebuilds) two public guest logins — a tenant and a landlord — and prints
+their credentials. Once they exist, the login page grows a **"Try VeriNest with a demo
+account"** panel that signs a visitor in with one click, so the project can be explored
+without registering. See [Demo accounts](#10-demo-accounts).
+
+### 6. Try the full flow
 
 Register a tenant (the OTP arrives by email, or in the backend console when SMTP is
 unconfigured), complete the profile, upload a document. Register a landlord, list a
@@ -566,6 +602,8 @@ db.users.updateOne({ email: "you@example.com" }, { $set: { role: "admin" } })
 cd backend
 npm test              # unit tests (e.g. trust score rules) — no DB needed
 npm run test:smoke    # full E2E lifecycle — requires local MongoDB
+
+npx jest tests/demoLogin.e2e.test.js --runInBand   # guest demo accounts + reset-on-login
 ```
 
 The **smoke suite** (`backend/tests/smoke.e2e.test.js`) chains the entire journey —
@@ -607,6 +645,7 @@ frontend unit tests; UI flows are verified manually / via browser automation.
 | backend | `npm test` | Jest unit tests under `src/` |
 | backend | `npm run test:smoke` | End-to-end lifecycle suite (needs local MongoDB) |
 | backend | `npm run seed:properties` | Insert demo property listings |
+| backend | `npm run seed:demo` | Create/reset the public guest demo accounts and print their credentials |
 | frontend | `npm run dev` | Vite dev server (HMR) |
 | frontend | `npm run build` | Type-check (`tsc -b`) + production bundle |
 | frontend | `npm run preview` | Serve the production build locally |

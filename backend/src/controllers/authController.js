@@ -3,6 +3,7 @@ const User = require('../models/User');
 const RefreshToken = require('../models/RefreshToken');
 const authService = require('../services/authService');
 const emailService = require('../services/emailService');
+const demoService = require('../services/demoService');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\+?[0-9]{10,15}$/;
@@ -197,6 +198,18 @@ const login = async (req, res, next) => {
       return res.status(403).json({ error: 'This account has been blocked' });
     }
 
+    // Public demo accounts start every session from the same curated snapshot:
+    // whatever the previous visitor created, changed or deleted is thrown away
+    // here, before the session is issued. A failure must not lock people out of
+    // the demo — worst case they land on the previous visitor's data.
+    if (user.isDemo) {
+      try {
+        await demoService.resetDemoWorkspace();
+      } catch (err) {
+        console.error(`[demo] Workspace reset failed: ${err.message}`);
+      }
+    }
+
     const { accessToken, refreshToken } = await authService.issueSession(user);
 
     return res.status(200).json({ accessToken, refreshToken, user });
@@ -261,4 +274,20 @@ const logout = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, refresh, logout, resetPassword };
+/**
+ * GET /api/auth/demo-accounts  (public)
+ * The credentials advertised on the login page. Returning the passwords is
+ * the point — these are throwaway guest logins whose data is reset on every
+ * sign-in. Empty array when the demo accounts have not been seeded, which is
+ * how the frontend knows to hide the section.
+ */
+const demoAccounts = async (req, res, next) => {
+  try {
+    const accounts = await demoService.listDemoAccounts();
+    return res.status(200).json({ accounts });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+module.exports = { register, login, refresh, logout, resetPassword, demoAccounts };

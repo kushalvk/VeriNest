@@ -5,6 +5,10 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+// Connect through the app's own connector, not a bare mongoose.connect: it
+// carries the DNS hardening that makes mongodb+srv:// resolve on machines
+// whose local resolver is broken (see config/db.js).
+const connectDB = require('../config/db');
 const User = require('../models/User');
 const Property = require('../models/Property');
 
@@ -40,8 +44,7 @@ const run = async () => {
     console.error('[seed] MONGO_URI is not set — configure .env first.');
     process.exit(1);
   }
-  await mongoose.connect(process.env.MONGO_URI);
-  console.log('[seed] Connected to MongoDB');
+  await connectDB();
 
   let landlord = await User.findOne({ email: SEED_LANDLORD_EMAIL });
   if (!landlord) {

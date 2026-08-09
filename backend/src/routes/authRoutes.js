@@ -57,6 +57,10 @@ const googleLimiter = rateLimit({
   },
 });
 
+// Public demo credentials for the login page's "Try it out" section. Read
+// only, no secrets beyond the throwaway demo passwords themselves.
+router.get('/demo-accounts', authController.demoAccounts);
+
 router.post('/register', registerLimiter, authController.register);
 router.post('/login', loginLimiter, authController.login);
 router.post('/google', googleLimiter, googleAuthController.googleLogin);

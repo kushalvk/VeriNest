@@ -1,11 +1,51 @@
 import type { ReactNode } from 'react';
 
-export function AuthCard({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * The centred card every auth page sits in.
+ *
+ * Pass `aside` to get a two-column layout instead: the aside on the left, the
+ * card on the right. Grid items stretch, so both columns end up exactly as
+ * tall as the taller one whichever that happens to be — the card's content is
+ * centred in the leftover space (`my-auto`) rather than sitting against the
+ * top edge. Below `lg` they stack with the card FIRST: signing in stays the
+ * primary action on a phone. Without `aside` this is the original single
+ * narrow card, unchanged for the other auth pages.
+ */
+export function AuthCard({
+  title,
+  children,
+  aside,
+}: {
+  title: string;
+  children: ReactNode;
+  aside?: ReactNode;
+}) {
+  const heading = <h1 className="mb-6 text-center text-2xl font-bold text-ink">{title}</h1>;
+
+  if (!aside) {
+    return (
+      <main className="flex items-center justify-center px-4 py-16">
+        <div className="w-full max-w-md rounded-lg bg-surface p-8 shadow-card">
+          {heading}
+          {children}
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main className="flex items-center justify-center px-4 py-16">
-      <div className="w-full max-w-md rounded-lg bg-surface p-8 shadow-card">
-        <h1 className="mb-6 text-center text-2xl font-bold text-ink">{title}</h1>
-        {children}
+    <main className="flex justify-center px-4 py-16">
+      <div className="grid w-full max-w-4xl gap-6 lg:grid-cols-2 lg:gap-8">
+        <div className="order-2 lg:order-1">{aside}</div>
+        <div className="order-1 mx-auto w-full max-w-md lg:order-2 lg:max-w-none">
+          <div className="flex h-full w-full flex-col rounded-lg bg-surface p-8 shadow-card">
+            {/* my-auto centres the form once the aside makes this column taller */}
+            <div className="my-auto">
+              {heading}
+              {children}
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );

@@ -13,6 +13,18 @@ export interface User {
   authProvider?: 'local' | 'google';
   isEmailVerified: boolean;
   accountStatus: 'pending' | 'active' | 'blocked';
+  // True for the public "try it out" guest accounts, whose data is reset on
+  // every sign-in. Drives the demo-mode banner in AppShell.
+  isDemo?: boolean;
+}
+
+/** A publicly advertised guest login — password included by design. */
+export interface DemoAccount {
+  role: 'tenant' | 'landlord';
+  label: string;
+  email: string;
+  password: string;
+  description: string;
 }
 
 export type OtpPurpose = 'signup' | 'forgot_password' | 'email_verification' | 'login';
@@ -40,6 +52,15 @@ export const login = async (email: string, password: string) => {
     user: User;
   }>('/auth/login', { email, password });
   return data;
+};
+
+/**
+ * Guest logins offered on the login page. Returns an empty list when the demo
+ * accounts have not been seeded (`npm run seed:demo`), which hides the section.
+ */
+export const getDemoAccounts = async () => {
+  const { data } = await client.get<{ accounts: DemoAccount[] }>('/auth/demo-accounts');
+  return data.accounts;
 };
 
 export const sendOtp = async (email: string, purpose: OtpPurpose = 'signup') => {
