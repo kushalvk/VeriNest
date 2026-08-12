@@ -99,6 +99,19 @@ const listDemoAccounts = async () => {
 };
 
 /**
+ * Ids of the seeded demo accounts — for queries that must leave demo-owned
+ * records out, such as the public property search. Matches on the fixed emails
+ * (indexed) rather than isDemo, and returns [] before `npm run seed:demo` has
+ * been run.
+ */
+const getDemoUserIds = async () => {
+  const users = await User.find({ email: { $in: DEMO_EMAILS }, isDemo: true }).select(
+    '_id'
+  );
+  return users.map((u) => u._id);
+};
+
+/**
  * Creates the demo users if missing and re-applies their canonical fields
  * (password, role, active status) if they already exist. Idempotent — safe to
  * run on every seed and on every demo login.
@@ -388,6 +401,7 @@ const resetDemoWorkspace = async () => {
 module.exports = {
   DEMO_ACCOUNTS,
   isDemoEmail,
+  getDemoUserIds,
   listDemoAccounts,
   ensureDemoAccounts,
   resetDemoWorkspace,

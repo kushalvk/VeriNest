@@ -358,6 +358,10 @@ trust-score pass. Whatever the previous visitor did is gone.
 - Choosing an account **autofills the real login form** and submits it, so it's obvious which
   credentials were used and they stay on screen if anything fails.
 - While signed in as a demo user the app shows a standing **demo-mode banner**.
+- The demo landlord's seeded listings are **hidden from the public property search**
+  (`GET /api/properties`) so throwaway fixtures never pollute the real market. They still
+  appear under the landlord's own `/properties/mine` and stay reachable by id, so the seeded
+  applications keep linking to a working detail page.
 - Two people demoing at once share one workspace; the second sign-in resets the first one's
   data mid-session. That's the accepted trade-off — nothing real may ever live here.
 - Create/rebuild them with `npm run seed:demo`; override the passwords with

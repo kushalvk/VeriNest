@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Property = require('../models/Property');
 const { uploadToCloudinary, FOLDERS } = require('../services/cloudinaryService');
+const { getDemoUserIds } = require('../services/demoService');
 const { matchesSignature } = require('../utils/fileSignature');
 
 // landlordId always comes from the JWT — strip anything the client sent.
@@ -164,6 +165,15 @@ const searchProperties = async (req, res, next) => {
 
     // Never client-overridable: only available listings are searchable.
     const filter = { status: 'available' };
+
+    // The demo landlord's seeded listings are throwaway fixtures rebuilt on
+    // every demo sign-in — keep them out of the public search entirely. The
+    // demo landlord still sees them under /properties/mine, and they stay
+    // reachable by id so the seeded applications keep linking somewhere.
+    const demoUserIds = await getDemoUserIds();
+    if (demoUserIds.length) {
+      filter.landlordId = { $nin: demoUserIds };
+    }
 
     if (city) {
       // String() guards against array/object query params (?city=a&city=b)

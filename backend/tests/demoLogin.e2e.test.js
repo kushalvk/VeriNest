@@ -129,6 +129,38 @@ describe('demo accounts', () => {
     expect(await Property.countDocuments({ landlordId: S.landlord._id })).toBe(3);
   });
 
+  test('demo listings stay out of the public property search', async () => {
+    const realListing = await Property.create({
+      landlordId: new mongoose.Types.ObjectId(),
+      title: 'Real 1BHK in Ahmedabad',
+      rent: 15000,
+      address: { city: 'Ahmedabad' },
+      status: 'available',
+    });
+
+    const res = await request(app).get('/api/properties').query({ city: 'Ahmedabad' });
+    expect(res.status).toBe(200);
+
+    const ids = res.body.results.map((p) => p._id);
+    expect(ids).toContain(realListing._id.toString());
+    expect(res.body.total).toBe(1);
+
+    const demoIds = (
+      await Property.find({
+        landlordId: S.landlord._id,
+        'address.city': 'Ahmedabad',
+      }).select('_id')
+    ).map((p) => p._id.toString());
+    expect(demoIds).toHaveLength(2); // the two Ahmedabad demo listings
+    for (const id of demoIds) expect(ids).not.toContain(id);
+
+    // ...but a demo listing is still reachable directly by id.
+    const detail = await request(app).get(`/api/properties/${demoIds[0]}`);
+    expect(detail.status).toBe(200);
+
+    await Property.deleteOne({ _id: realListing._id });
+  });
+
   test('a reset reuses the same accounts instead of piling up new ones', async () => {
     await demoService.resetDemoWorkspace();
     expect(await User.countDocuments({ isDemo: true })).toBe(2);
