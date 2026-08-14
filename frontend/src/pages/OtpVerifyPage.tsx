@@ -4,6 +4,7 @@ import * as authApi from '../api/authApi';
 import { getApiError } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { AuthCard, FormAlert, buttonClass, inputClass, labelClass } from '../components/AuthCard';
+import { photos } from '../assets/photos';
 
 const RESEND_COOLDOWN_S = 30;
 
@@ -71,7 +72,7 @@ export default function OtpVerifyPage() {
   };
 
   return (
-    <AuthCard title="Verify your email">
+    <AuthCard title="Verify your email" backdrop={photos.authNewHome}>
       {apiError && <FormAlert tone="error" message={apiError} />}
       {info && !apiError && <FormAlert tone="success" message={info} />}
       <form onSubmit={onSubmit} noValidate className="space-y-4">

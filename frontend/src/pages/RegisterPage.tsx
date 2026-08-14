@@ -4,6 +4,7 @@ import * as authApi from '../api/authApi';
 import { getApiError } from '../api/client';
 import { AuthCard, FieldError, FormAlert, buttonClass, inputClass, labelClass } from '../components/AuthCard';
 import GoogleSignInButton from '../components/GoogleSignInButton';
+import { photos } from '../assets/photos';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\+?\d{10,15}$/;
@@ -57,7 +58,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <AuthCard title="Create your account">
+    <AuthCard title="Create your account" backdrop={photos.authNewHome}>
       {apiError && <FormAlert tone="error" message={apiError} />}
       <form onSubmit={onSubmit} noValidate className="space-y-4">
         <div>

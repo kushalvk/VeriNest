@@ -8,6 +8,7 @@ import { AuthCard, FormAlert, buttonClass, inputClass, labelClass } from '../com
 import GoogleSignInButton from '../components/GoogleSignInButton';
 import DemoLoginPanel from '../components/DemoLoginPanel';
 import { useDemoAccounts } from '../hooks/useDemoAccounts';
+import { photos } from '../assets/photos';
 
 // How long the filled-in demo credentials sit visible before the request goes
 // out. Long enough to see what was typed into the form, short enough not to
@@ -83,6 +84,7 @@ export default function LoginPage() {
   return (
     <AuthCard
       title="Log in"
+      backdrop={photos.authLiving}
       aside={
         demoAccounts.length > 0 ? (
           <DemoLoginPanel

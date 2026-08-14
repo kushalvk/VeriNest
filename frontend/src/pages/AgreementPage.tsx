@@ -16,7 +16,7 @@ function SignSlot({ label, signed }: { label: string; signed: boolean }) {
         signed ? 'border-green-200 bg-green-50' : 'border-line bg-surface'
       }`}>
       <p className="text-2xl">{signed ? '✅' : '🖊️'}</p>
-      <p className="mt-1 text-sm font-medium text-black">{label}</p>
+      <p className={`mt-1 text-sm font-medium ${signed ? 'text-black' : 'text-white'}`}>{label}</p>
       <p className={`text-xs ${signed ? 'text-green-700' : 'text-ink-faint'}`}>
         {signed ? 'Signed' : 'Awaiting signature'}
       </p>

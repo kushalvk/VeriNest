@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { HouseArtwork } from './Artwork';
 import type { Property } from '../api/propertyApi';
 
 const statusStyles: Record<Property['status'], string> = {
@@ -24,7 +25,7 @@ export default function PropertyCard({ property, variant, onEdit, onDelete, onMa
         {thumb ? (
           <img src={thumb} alt={property.title} className="h-full w-full object-cover" />
         ) : (
-          <span className="text-3xl" role="img" aria-label="No photo yet">🏠</span>
+          <HouseArtwork className="h-16 w-auto text-ink-faint" title="No photo yet" />
         )}
       </div>
       <div className="min-w-0 flex-1">

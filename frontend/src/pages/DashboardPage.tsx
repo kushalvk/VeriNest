@@ -25,6 +25,8 @@ import * as propertyApi from '../api/propertyApi';
 import * as agreementApi from '../api/agreementApi';
 import * as adminApi from '../api/adminApi';
 import { useAuthStore } from '../store/authStore';
+import { PhotoBand } from '../components/Imagery';
+import { photos } from '../assets/photos';
 
 type IconType = ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>;
 
@@ -221,9 +223,11 @@ export default function DashboardPage() {
 
   return (
     <main className="pb-16">
-      {/* greeting band */}
-      <section className="bg-gradient-to-br from-primary-600 to-primary-800 text-white">
-        <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+      {/* greeting band. The lighter "hero" scrim, not the flatter "band" one:
+          stacked with dark mode's extra layer, "band" leaves the photo all but
+          invisible on a dark theme. */}
+      <PhotoBand photo={photos.dashboard} scrim="hero" eager>
+        <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6">
           <p className="text-sm text-primary-200">{today()}</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight">
             {greetingFor(new Date().getHours())}, {firstName} 👋
@@ -233,7 +237,7 @@ export default function DashboardPage() {
             {role} account
           </span>
         </div>
-      </section>
+      </PhotoBand>
 
       <div className="mx-auto mt-8 max-w-5xl space-y-8 px-4 sm:px-6">
         {/* profile nudge */}

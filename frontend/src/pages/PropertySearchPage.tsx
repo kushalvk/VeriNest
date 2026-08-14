@@ -3,6 +3,8 @@ import * as propertyApi from '../api/propertyApi';
 import { getApiError } from '../api/client';
 import PropertyCard from '../components/PropertyCard';
 import { inputClass, labelClass } from '../components/AuthCard';
+import { PhotoBand } from '../components/Imagery';
+import { photos } from '../assets/photos';
 import type { SearchFilters, SearchResult } from '../api/propertyApi';
 
 const FURNISHINGS = ['Furnished', 'Semi-Furnished', 'Unfurnished'];
@@ -64,10 +66,22 @@ export default function PropertySearchPage() {
 
   return (
     <main className="pb-16">
-      <div className="mx-auto mt-8 max-w-5xl px-4">
-        <h1 className="text-2xl font-bold text-ink">Find a home</h1>
+      <PhotoBand photo={photos.search} scrim="hero" eager>
+        <div className="mx-auto max-w-5xl px-4 py-20">
+          <h1 className="text-3xl font-bold tracking-tight">Find a home</h1>
+          <p className="mt-2 max-w-xl text-primary-100">
+            Every listing here comes from a landlord on VeriNest — filter by city, budget,
+            and the things that actually matter to you.
+          </p>
+        </div>
+      </PhotoBand>
 
-        <form onSubmit={onSubmit} className="mt-4 rounded-lg border border-line bg-surface p-4">
+      <div className="mx-auto mt-8 max-w-5xl px-4">
+        {/* The filter card is pulled up over the banner's bottom edge so the
+            search sits visually inside the hero rather than after it. It needs
+            `relative` to paint above the banner, which is itself positioned. */}
+        <form onSubmit={onSubmit}
+          className="relative -mt-14 rounded-lg border border-line bg-surface p-4 shadow-card">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
             <div className="col-span-2">
               <label htmlFor="city" className={labelClass}>City</label>

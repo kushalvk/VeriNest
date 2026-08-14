@@ -1,21 +1,26 @@
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { PhotoBand, PhotoSplit } from '../components/Imagery';
+import { photos } from '../assets/photos';
 
 const features = [
   {
     icon: '🛡️',
     title: 'Verified documents',
     text: 'Tenants upload identity and income documents once; our review pipeline (with OCR and fraud checks) verifies them so landlords don’t have to.',
+    photo: photos.featureDocuments,
   },
   {
     icon: '⭐',
     title: 'Transparent trust scores',
     text: 'A deterministic, explainable score built from verified documents, profile completeness, and real rental ratings — no black boxes.',
+    photo: photos.featureTrust,
   },
   {
     icon: '✍️',
     title: 'Digital agreements',
     text: 'Generate the rental agreement, sign it digitally from any device, and get a stamped PDF the moment both parties have signed.',
+    photo: photos.featureAgreement,
   },
 ];
 
@@ -30,8 +35,9 @@ export default function HomePage() {
 
   return (
     <main>
-      {/* hero */}
-      <section className="bg-gradient-to-br from-primary-600 to-primary-800 text-white">
+      {/* hero — photo layered over the brand gradient (PhotoBand keeps the
+          gradient underneath, so the hero survives the photo not loading) */}
+      <PhotoBand photo={photos.home} scrim="hero" eager>
         <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:py-28">
           <div className="max-w-2xl">
             <p className="inline-block rounded-full bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider">
@@ -65,20 +71,20 @@ export default function HomePage() {
             </div>
           </div>
         </div>
-      </section>
+      </PhotoBand>
 
-      {/* features */}
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
+      {/* features — alternating text/photo rows */}
+      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <h2 className="text-center text-2xl font-bold text-ink">Why VeriNest</h2>
-        <div className="mt-8 grid gap-6 md:grid-cols-3">
-          {features.map((f) => (
-            <div key={f.title} className="rounded-lg bg-surface p-6 shadow-card">
+        <div className="mt-12 space-y-16">
+          {features.map((f, i) => (
+            <PhotoSplit key={f.title} photo={f.photo} side={i % 2 === 0 ? 'right' : 'left'}>
               <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-50 text-2xl dark:bg-primary-500/15">
                 {f.icon}
               </span>
-              <h3 className="mt-4 font-semibold text-ink">{f.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-ink-muted">{f.text}</p>
-            </div>
+              <h3 className="mt-4 text-xl font-bold text-ink">{f.title}</h3>
+              <p className="mt-3 leading-relaxed text-ink-muted">{f.text}</p>
+            </PhotoSplit>
           ))}
         </div>
       </section>
@@ -105,17 +111,20 @@ export default function HomePage() {
 
       {/* closing CTA */}
       {!isAuthenticated && (
-        <section className="mx-auto max-w-7xl px-4 py-16 text-center sm:px-6">
-          <h2 className="text-2xl font-bold text-ink">Ready to rent with confidence?</h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm text-ink-muted">
-            Create a free account as a tenant or landlord and see the difference verified
-            renting makes.
-          </p>
-          <Link to="/register"
-            className="mt-6 inline-block rounded-md bg-primary-600 px-8 py-3 text-sm font-semibold text-white shadow-card transition hover:bg-primary-700">
-            Create your account
-          </Link>
-        </section>
+        <PhotoBand photo={photos.homeCta}>
+          <div className="mx-auto max-w-7xl px-4 py-20 text-center sm:px-6">
+            <h2 className="text-2xl font-bold">Ready to rent with confidence?</h2>
+            <p className="mx-auto mt-2 max-w-xl text-sm text-primary-100">
+              Create a free account as a tenant or landlord and see the difference verified
+              renting makes.
+            </p>
+            {/* fixed white — sits on the brand gradient in both themes */}
+            <Link to="/register"
+              className="mt-6 inline-block rounded-md bg-white px-8 py-3 text-sm font-semibold text-primary-700 shadow-card transition hover:bg-primary-50">
+              Create your account
+            </Link>
+          </div>
+        </PhotoBand>
       )}
     </main>
   );

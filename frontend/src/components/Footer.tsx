@@ -93,7 +93,14 @@ export default function Footer() {
           <p className="text-xs text-ink-faint">
             &copy; {new Date().getFullYear()} VeriNest. All rights reserved.
           </p>
-          <p className="text-xs text-ink-faint">Built for transparent renting.</p>
+          {/* Unsplash's licence doesn't require credit — we give it anyway. */}
+          <p className="text-xs text-ink-faint">
+            Built for transparent renting · Photography from{' '}
+            <a href="https://unsplash.com" target="_blank" rel="noreferrer noopener"
+              className="hover:text-primary-700 hover:underline dark:hover:text-primary-300">
+              Unsplash
+            </a>
+          </p>
         </div>
       </div>
     </footer>

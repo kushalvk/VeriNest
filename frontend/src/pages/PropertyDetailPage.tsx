@@ -6,6 +6,7 @@ import * as applicationApi from '../api/applicationApi';
 import { getApiError } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { inputClass, labelClass } from '../components/AuthCard';
+import { HouseArtwork } from '../components/Artwork';
 import type { Property } from '../api/propertyApi';
 
 type ApplyError =
@@ -111,13 +112,20 @@ export default function PropertyDetailPage() {
     <main className="pb-16">
       {backLink}
       <div className="mx-auto mt-6 max-w-4xl px-4">
-        {/* gallery */}
+        {/* gallery — a listing with no photos gets illustrated, never a stock
+            photo of somebody else's home */}
         <div className="overflow-hidden rounded-lg bg-line">
           {images.length > 0 ? (
             <img src={images[mainImage]?.url} alt={property.title}
               className="h-80 w-full object-cover" data-testid="main-image" />
           ) : (
-            <div className="flex h-56 items-center justify-center text-5xl">🏠</div>
+            <div className="flex h-56 flex-col items-center justify-center gap-2 bg-surface-muted"
+              data-testid="no-photos">
+              <HouseArtwork className="h-24 w-auto text-ink-faint" />
+              <p className="text-sm text-ink-faint">
+                The landlord hasn’t added photos for this listing yet.
+              </p>
+            </div>
           )}
         </div>
         {images.length > 1 && (

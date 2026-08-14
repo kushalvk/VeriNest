@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import * as authApi from '../api/authApi';
 import { getApiError } from '../api/client';
 import { AuthCard, FormAlert, buttonClass, inputClass, labelClass } from '../components/AuthCard';
+import { photos } from '../assets/photos';
 
 const RESEND_COOLDOWN_S = 30;
 
@@ -84,7 +85,7 @@ export default function ForgotPasswordPage() {
 
   if (step === 'done') {
     return (
-      <AuthCard title="Password reset">
+      <AuthCard title="Password reset" backdrop={photos.authLiving}>
         <FormAlert tone="success"
           message="Your password has been changed and all previous sessions were signed out." />
         <Link to="/login"
@@ -96,7 +97,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <AuthCard title="Forgot password">
+    <AuthCard title="Forgot password" backdrop={photos.authLiving}>
       {error && <FormAlert tone="error" message={error} />}
       {!error && info && <FormAlert tone="success" message={info} />}
 

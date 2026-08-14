@@ -5,6 +5,7 @@ import * as googleAuthApi from '../api/googleAuthApi';
 import { getApiError } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { AuthCard, FormAlert } from '../components/AuthCard';
+import { photos } from '../assets/photos';
 
 /**
  * One-time role picker shown right after a first Google login (when the account
@@ -37,7 +38,7 @@ export default function SelectRolePage() {
   };
 
   return (
-    <AuthCard title="How will you use VeriNest?">
+    <AuthCard title="How will you use VeriNest?" backdrop={photos.authNewHome}>
       <p className="mb-6 text-center text-sm text-ink-muted">
         Pick the role that fits you. This is a one-time choice and sets up the
         right experience for your account.

@@ -1,22 +1,61 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { PhotoBand, PhotoSplit } from '../components/Imagery';
+import { photos } from '../assets/photos';
+import type { Photo } from '../assets/photos';
 
 /**
  * The lightweight informational pages linked from the Header/Footer
  * (About, Services, Contact, Privacy, Terms). One shared shell keeps them
  * visually identical; content stays intentionally brief until a dedicated
  * marketing pass fleshes them out.
+ *
+ * `photo` turns the header into a full-bleed image band. The three
+ * marketing-facing pages use it; Privacy and Terms deliberately don't — a
+ * mood photo over a legal page reads as decoration where plainness is the
+ * point.
  */
-function InfoPage({ title, lede, children }: { title: string; lede: string; children: ReactNode }) {
+function InfoPage({
+  title,
+  lede,
+  photo,
+  wide,
+  children,
+}: {
+  title: string;
+  lede: string;
+  photo?: Photo;
+  /** Widens the body column — needed when the content is side-by-side rows
+   *  rather than the default stack of prose cards. */
+  wide?: boolean;
+  children: ReactNode;
+}) {
+  const header = photo ? (
+    <PhotoBand photo={photo} scrim="hero" eager>
+      <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
+        <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+        <p className="mt-3 text-base leading-relaxed text-primary-100">{lede}</p>
+      </div>
+    </PhotoBand>
+  ) : (
+    <section className="border-b border-line bg-surface">
+      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
+        <h1 className="text-3xl font-bold tracking-tight text-ink">{title}</h1>
+        <p className="mt-3 text-base leading-relaxed text-ink-muted">{lede}</p>
+      </div>
+    </section>
+  );
+
   return (
     <main className="pb-16">
-      <section className="border-b border-line bg-surface">
-        <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
-          <h1 className="text-3xl font-bold tracking-tight text-ink">{title}</h1>
-          <p className="mt-3 text-base leading-relaxed text-ink-muted">{lede}</p>
-        </div>
-      </section>
-      <div className="mx-auto mt-8 max-w-3xl space-y-6 px-4 sm:px-6">{children}</div>
+      {header}
+      <div
+        className={`mx-auto mt-8 px-4 sm:px-6 ${
+          wide ? 'max-w-5xl space-y-16' : 'max-w-3xl space-y-6'
+        }`}
+      >
+        {children}
+      </div>
     </main>
   );
 }
@@ -32,9 +71,26 @@ function Card({ title, children }: { title?: string; children: ReactNode }) {
   );
 }
 
+/** The text half of a Services row — a heading over a short bullet list. */
+function ServiceList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <>
+      <h2 className="text-xl font-bold text-ink">{title}</h2>
+      <ul className="mt-4 space-y-3 text-sm leading-relaxed text-ink-muted">
+        {items.map((item) => (
+          <li key={item} className="flex gap-2">
+            <span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary-500" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 export function AboutPage() {
   return (
-    <InfoPage title="About VeriNest"
+    <InfoPage title="About VeriNest" photo={photos.about}
       lede="VeriNest exists to remove the guesswork from renting: landlords shouldn't have to gamble on strangers, and reliable tenants shouldn't have to prove themselves from scratch with every application.">
       <Card title="What we do">
         <p>
@@ -66,30 +122,36 @@ export function AboutPage() {
 
 export function ServicesPage() {
   return (
-    <InfoPage title="What we offer"
+    <InfoPage title="What we offer" photo={photos.services} wide
       lede="Everything both sides of a tenancy need — from the first application to the final rating.">
-      <Card title="For tenants">
-        <p>• Upload identity and income documents once; get them verified and reuse them for every application.</p>
-        <p>• A transparent trust score that grows with verified documents, a complete profile, and good rental history.</p>
-        <p>• Apply to listings, track application status, and control exactly who sees your documents and for how long.</p>
-      </Card>
-      <Card title="For landlords">
-        <p>• List properties and receive applications from tenants with verified profiles.</p>
-        <p>• Request document access with tenant consent — one-time, 24-hour, or 7-day windows.</p>
-        <p>• Generate rental agreements, collect digital signatures, and keep a stamped PDF record.</p>
-      </Card>
-      <Card title="For everyone">
-        <p>• Email and in-app notifications at every step of the journey.</p>
-        <p>• Post-tenancy two-way ratings that build lasting, portable reputations.</p>
-        <p>• An in-app assistant that answers questions about your own account and data.</p>
-      </Card>
+      <PhotoSplit photo={photos.servicesTenant} side="right">
+        <ServiceList title="For tenants" items={[
+          'Upload identity and income documents once; get them verified and reuse them for every application.',
+          'A transparent trust score that grows with verified documents, a complete profile, and good rental history.',
+          'Apply to listings, track application status, and control exactly who sees your documents and for how long.',
+        ]} />
+      </PhotoSplit>
+      <PhotoSplit photo={photos.servicesLandlord} side="left">
+        <ServiceList title="For landlords" items={[
+          'List properties and receive applications from tenants with verified profiles.',
+          'Request document access with tenant consent — one-time, 24-hour, or 7-day windows.',
+          'Generate rental agreements, collect digital signatures, and keep a stamped PDF record.',
+        ]} />
+      </PhotoSplit>
+      <PhotoSplit photo={photos.servicesEveryone} side="right">
+        <ServiceList title="For everyone" items={[
+          'Email and in-app notifications at every step of the journey.',
+          'Post-tenancy two-way ratings that build lasting, portable reputations.',
+          'An in-app assistant that answers questions about your own account and data.',
+        ]} />
+      </PhotoSplit>
     </InfoPage>
   );
 }
 
 export function ContactPage() {
   return (
-    <InfoPage title="Contact us"
+    <InfoPage title="Contact us" photo={photos.contact}
       lede="Questions, feedback, or something not working as it should? We'd like to hear about it.">
       <Card title="Reach the team">
         <p>

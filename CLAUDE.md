@@ -97,6 +97,20 @@ Landlord creates an agreement from an accepted application → `agreementPdfServ
 
 All routes are declared in `src/App.tsx`. A single site-wide `AppShell` (header, footer, notification bell, chat widget) wraps every route — public and authenticated alike. Authenticated pages nest under the `RequireAuth` outlet; role-specific pages wrap in `RequireRole`. Public pages include property search/detail and `/verify/:token`. API calls go through per-domain modules in `src/api/` which all use the shared `client.ts`; use `getApiError(err)` for user-facing error messages.
 
+### Frontend imagery
+
+Two sources, split by whether the page is selling or working.
+
+**Photos** (`src/assets/photos.ts`) are hotlinked from the Unsplash CDN at four widths. They render through `components/Imagery.tsx`:
+
+- `PhotoBand` — full-bleed band, layered brand gradient → photo → scrim → content. Home hero and closing CTA, property search banner, About/Services/Contact headers, dashboard greeting.
+- `PhotoSplit` — text beside a photo, `side` alternating down the page. Home feature rows and the Services page.
+- `AuthBackdrop` — the muted wash behind an auth card, via `AuthCard`'s `backdrop` prop. Works with the login page's two-column layout because it sits behind both columns rather than claiming one.
+
+`PhotoLayer` removes itself on error, so the gradient (or, in `PhotoSplit`, the artwork underneath) is what actually guarantees contrast — a photo that never arrives costs nothing. Three rules learned the hard way: **opacity modifiers on the scrims must stay on Tailwind's 5-step scale** (an off-scale `/92` generates no rule at all, and the scrim then inherits the section's own opaque gradient and hides the photo, silently); auth backdrops need wide scenes, not macro shots, which blur into smudges; and a letterbox band (search, dashboard) needs a horizontal subject — anything else crops to abstraction.
+
+**SVG** (`components/Artwork.tsx`, drawn in `currentColor` so both themes work for free). `HouseArtwork` stands in wherever content is missing: a listing with no photos, and behind every `PhotoSplit` image. A stock house passed off as a real listing would be misleading, which is why that case is illustrated rather than photographed. In-app screens other than the dashboard greeting (documents, applications, agreements, admin) and the legal pages stay image-free on purpose.
+
 ### External services
 
 Cloudinary (file storage), Gemini via `@google/genai` (`geminiService` — chat assistant; `chatContextService` builds a context of only the caller's own data), SMTP via nodemailer (falls back gracefully when unconfigured), tesseract.js + sharp (local OCR, no API key), pdf-lib (agreement PDFs). All keyed from `backend/.env`.

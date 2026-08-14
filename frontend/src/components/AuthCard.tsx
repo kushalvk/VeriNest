@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { AuthBackdrop } from './Imagery';
+import type { Photo } from '../assets/photos';
 
 /**
  * The centred card every auth page sits in.
@@ -10,21 +12,32 @@ import type { ReactNode } from 'react';
  * top edge. Below `lg` they stack with the card FIRST: signing in stays the
  * primary action on a phone. Without `aside` this is the original single
  * narrow card, unchanged for the other auth pages.
+ *
+ * Pass `backdrop` to wash a muted photo behind the whole page. It works with
+ * either layout — including the login page, whose left column is already spoken
+ * for by the demo-account panel — because it sits behind everything rather than
+ * claiming a column. `min-h` gives it a full-height canvas to fade across
+ * instead of a short band hugging the card, and `isolate` keeps its negative
+ * z-index inside this main.
  */
 export function AuthCard({
   title,
   children,
   aside,
+  backdrop,
 }: {
   title: string;
   children: ReactNode;
   aside?: ReactNode;
+  backdrop?: Photo;
 }) {
   const heading = <h1 className="mb-6 text-center text-2xl font-bold text-ink">{title}</h1>;
+  const shell = `relative isolate px-4 py-16 ${backdrop ? 'min-h-[36rem]' : ''}`;
 
   if (!aside) {
     return (
-      <main className="flex items-center justify-center px-4 py-16">
+      <main className={`${shell} flex items-center justify-center`}>
+        {backdrop && <AuthBackdrop photo={backdrop} />}
         <div className="w-full max-w-md rounded-lg bg-surface p-8 shadow-card">
           {heading}
           {children}
@@ -34,7 +47,8 @@ export function AuthCard({
   }
 
   return (
-    <main className="flex justify-center px-4 py-16">
+    <main className={`${shell} flex justify-center`}>
+      {backdrop && <AuthBackdrop photo={backdrop} />}
       <div className="grid w-full max-w-4xl gap-6 lg:grid-cols-2 lg:gap-8">
         <div className="order-2 lg:order-1">{aside}</div>
         <div className="order-1 mx-auto w-full max-w-md lg:order-2 lg:max-w-none">
