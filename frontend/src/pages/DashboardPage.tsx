@@ -673,7 +673,7 @@ export default function DashboardPage() {
 
                     {/* Agreements */}
                     <DashboardAction
-                        to="/agreements"
+                        to="/received-applications"
                         icon={ScrollText}
                         title="Agreements"
                         text="Keep rental agreements organized and monitor documents awaiting signatures."
