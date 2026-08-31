@@ -56,21 +56,6 @@ const initialsOf = (fullName?: string) =>
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('') || '?';
 
-const desktopLinkClass = (extra = '') =>
-  ({ isActive }: { isActive: boolean }) =>
-    `rounded-md px-3 py-2 text-sm font-medium transition ${
-      isActive
-        ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
-        : 'text-ink-muted hover:bg-surface-muted hover:text-ink'
-    } ${extra}`;
-
-const mobileLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `block rounded-md px-3 py-2.5 text-base font-medium ${
-    isActive
-      ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
-      : 'text-ink-muted hover:bg-surface-muted'
-  }`;
-
 /**
  * Site-wide sticky header. Auth state lives in the in-memory zustand store
  * and is read synchronously, so the correct variant renders on first paint —
@@ -128,148 +113,476 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <div className="flex h-16 items-center justify-between gap-3">
-          {/* brand + desktop nav */}
-          <div className="flex min-w-0 items-center gap-2 lg:gap-6">
-            <Link to={isAuthenticated ? '/dashboard' : '/'} onClick={closeAll}
-              className="flex shrink-0 items-center gap-2" data-testid="brand">
-              <ShieldCheck className="h-7 w-7 text-primary-600 dark:text-primary-400" aria-hidden="true" />
-              <span className="text-lg font-bold tracking-tight text-ink">
-                Veri<span className="text-primary-600 dark:text-primary-400">Nest</span>
+      <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/80 shadow-[0_4px_20px_rgba(15,23,42,0.04)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/80">
+
+        <div className="mx-auto max-w-7xl px-3 sm:px-6">
+
+          <div className="flex h-[72px] items-center justify-between gap-3">
+
+            {/* =====================================================
+            BRAND + DESKTOP NAV
+        ====================================================== */}
+            <div className="flex min-w-0 items-center gap-4 lg:gap-8">
+
+              {/* Brand */}
+              <Link
+                  to={isAuthenticated ? '/dashboard' : '/'}
+                  onClick={closeAll}
+                  className="group flex shrink-0 items-center gap-2.5"
+                  data-testid="brand"
+              >
+            <span className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary-600 via-indigo-600 to-violet-700 text-white shadow-lg shadow-primary-600/20 transition-all duration-300 group-hover:scale-105 group-hover:shadow-primary-600/30">
+
+              <ShieldCheck
+                  className="h-5 w-5"
+                  aria-hidden="true"
+              />
+
+              <span className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/20" />
+
+            </span>
+
+                <span className="hidden text-xl font-black tracking-tight text-slate-900 dark:text-white sm:block">
+              Veri
+              <span className="bg-gradient-to-r from-primary-600 to-indigo-600 bg-clip-text text-transparent">
+                Nest
               </span>
-            </Link>
+            </span>
+              </Link>
 
-            <nav aria-label="Primary" className="hidden items-center gap-1 lg:flex" data-testid="header-nav">
-              {appLinks.map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.end} className={desktopLinkClass()}>
-                  {item.label}
-                </NavLink>
-              ))}
-              {publicLinks.map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.end}
-                  // when signed in, marketing links yield to app links on tighter screens
-                  className={desktopLinkClass(isAuthenticated ? 'hidden xl:inline-block' : '')}>
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-          </div>
 
-          {/* right side */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <ThemeToggle />
-            {isAuthenticated ? (
-              <>
-                <NotificationBell />
-                <div className="relative" ref={menuRef}>
-                  <button type="button" data-testid="user-menu"
-                    aria-haspopup="menu" aria-expanded={menuOpen}
-                    onClick={() => setMenuOpen((o) => !o)}
-                    className="flex items-center gap-1.5 rounded-full p-1 hover:bg-surface-muted">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">
-                      {initialsOf(user?.fullName)}
-                    </span>
-                    <ChevronDown aria-hidden="true"
-                      className={`hidden h-4 w-4 text-ink-faint transition sm:block ${menuOpen ? 'rotate-180' : ''}`} />
-                  </button>
+              {/* =====================================================
+              DESKTOP NAVIGATION
+              xl:flex = prevents overlap on smaller desktop widths
+          ====================================================== */}
+              <nav
+                  aria-label="Primary"
+                  className="hidden items-center gap-1 xl:flex"
+                  data-testid="header-nav"
+              >
 
-                  {menuOpen && (
-                    <div role="menu" data-testid="user-menu-panel"
-                      className="absolute right-0 z-40 mt-2 w-60 rounded-lg border border-line bg-surface py-1 shadow-lg">
-                      <div className="border-b border-line px-4 py-2.5">
-                        <p className="truncate text-sm font-semibold text-ink">{user?.fullName}</p>
-                        <p className="truncate text-xs text-ink-faint">{user?.email}</p>
-                        <p className="mt-1 inline-block rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium capitalize text-primary-700 dark:bg-primary-500/15 dark:text-primary-300">
-                          {role}
-                        </p>
-                      </div>
-                      {role !== 'admin' && (
-                        <Link to="/profile" role="menuitem" onClick={closeAll}
-                          className="block px-4 py-2 text-sm text-ink-muted hover:bg-surface-muted">
-                          My Profile
-                        </Link>
-                      )}
-                      <button type="button" role="menuitem" onClick={() => void onLogout()} data-testid="logout"
-                        className="block w-full px-4 py-2 text-left text-sm text-danger-600 hover:bg-danger-50 dark:text-danger-400 dark:hover:bg-danger-500/10">
-                        Log out
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="hidden items-center gap-2 sm:flex">
-                <Link to="/login" data-testid="header-login"
-                  className="rounded-md px-3 py-2 text-sm font-medium text-ink-muted hover:bg-surface-muted hover:text-ink">
-                  Log in
-                </Link>
-                <Link to="/register" data-testid="header-signup"
-                  className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-card transition hover:bg-primary-700">
-                  Sign up
-                </Link>
+                {/* Role-specific links */}
+                {appLinks.map((item) => (
+                    <NavLink
+                        key={item.to}
+                        to={item.to}
+                        end={item.end}
+                        className={({ isActive }) =>
+                            `rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                                isActive
+                                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/10 dark:text-primary-300'
+                                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white'
+                            }`
+                        }
+                    >
+                      {item.label}
+                    </NavLink>
+                ))}
+
+
+                {/* =================================================
+                PUBLIC LINKS
+
+                IMPORTANT:
+                When logged in, About / Services / Contact
+                are hidden from the desktop navigation.
+            ================================================== */}
+                {!isAuthenticated &&
+                    publicLinks.map((item) => (
+                        <NavLink
+                            key={item.to}
+                            to={item.to}
+                            end={item.end}
+                            className={({ isActive }) =>
+                                `rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                                    isActive
+                                        ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/10 dark:text-primary-300'
+                                        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white'
+                                }`
+                            }
+                        >
+                          {item.label}
+                        </NavLink>
+                    ))}
+
+              </nav>
+            </div>
+
+
+            {/* =====================================================
+            RIGHT SIDE
+        ====================================================== */}
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+
+              {/* Theme */}
+              <div className="rounded-xl transition hover:bg-slate-100 dark:hover:bg-white/5">
+                <ThemeToggle />
               </div>
-            )}
 
-            {/* hamburger */}
-            <button type="button" data-testid="mobile-menu-toggle"
-              aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-              aria-expanded={mobileOpen} aria-controls="mobile-menu"
-              onClick={() => setMobileOpen((o) => !o)}
-              className="rounded-md p-2 text-ink-muted hover:bg-surface-muted lg:hidden">
-              {mobileOpen
-                ? <X className="h-6 w-6" aria-hidden="true" />
-                : <Menu className="h-6 w-6" aria-hidden="true" />}
-            </button>
+
+              {/* =================================================
+              AUTHENTICATED USER
+          ================================================== */}
+              {isAuthenticated ? (
+                  <>
+                    {/* Notification */}
+                    <div className="rounded-xl transition hover:bg-slate-100 dark:hover:bg-white/5">
+                      <NotificationBell />
+                    </div>
+
+
+                    {/* Profile */}
+                    <div
+                        className="relative"
+                        ref={menuRef}
+                    >
+
+                      <button
+                          type="button"
+                          data-testid="user-menu"
+                          aria-haspopup="menu"
+                          aria-expanded={menuOpen}
+                          onClick={() => setMenuOpen((o) => !o)}
+                          className={`group flex items-center gap-2 rounded-2xl border px-1.5 py-1.5 transition-all duration-200 ${
+                              menuOpen
+                                  ? 'border-primary-200 bg-primary-50 shadow-sm dark:border-primary-500/30 dark:bg-primary-500/10'
+                                  : 'border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:border-white/10 dark:hover:bg-white/5'
+                          }`}
+                      >
+
+                        {/* Avatar */}
+                        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-600 to-indigo-700 text-xs font-black text-white shadow-md">
+
+                    {initialsOf(user?.fullName)}
+
+                          {/* Online indicator */}
+                          <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-900" />
+
+                  </span>
+
+
+                        {/* User info */}
+                        {/* max-w-[120px] prevents long names from pushing navbar */}
+                        <div className="hidden max-w-[120px] min-w-0 text-left md:block">
+
+                          <p className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                            {user?.fullName}
+                          </p>
+
+                          <p className="truncate text-[10px] font-medium capitalize text-slate-400">
+                            {role}
+                          </p>
+
+                        </div>
+
+
+                        <ChevronDown
+                            aria-hidden="true"
+                            className={`mr-1 hidden h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 md:block ${
+                                menuOpen
+                                    ? 'rotate-180 text-primary-600'
+                                    : ''
+                            }`}
+                        />
+
+                      </button>
+
+
+                      {/* =================================================
+                    USER DROPDOWN
+                ================================================== */}
+                      {menuOpen && (
+                          <div
+                              role="menu"
+                              data-testid="user-menu-panel"
+                              className="absolute right-0 z-50 mt-3 w-72 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.15)] dark:border-white/10 dark:bg-slate-900"
+                          >
+
+                            {/* User information */}
+                            <div className="bg-gradient-to-br from-primary-50 via-white to-indigo-50 p-4 dark:from-primary-500/10 dark:via-slate-900 dark:to-indigo-500/10">
+
+                              <div className="flex items-center gap-3">
+
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-600 to-indigo-700 text-sm font-black text-white shadow-lg">
+                          {initialsOf(user?.fullName)}
+                        </span>
+
+                                <div className="min-w-0">
+
+                                  <p className="truncate text-sm font-bold text-slate-900 dark:text-white">
+                                    {user?.fullName}
+                                  </p>
+
+                                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                                    {user?.email}
+                                  </p>
+
+                                  <span className="mt-1.5 inline-flex rounded-full bg-primary-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-primary-700 dark:bg-primary-500/15 dark:text-primary-300">
+                            {role}
+                          </span>
+
+                                </div>
+
+                              </div>
+
+                            </div>
+
+
+                            {/* Menu */}
+                            <div className="p-2">
+
+                              {/* Profile */}
+                              {role !== 'admin' && (
+                                  <Link
+                                      to="/profile"
+                                      role="menuitem"
+                                      onClick={closeAll}
+                                      className="group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
+                                  >
+
+                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition group-hover:bg-primary-50 group-hover:text-primary-600 dark:bg-white/5 dark:text-slate-400 dark:group-hover:bg-primary-500/10 dark:group-hover:text-primary-300">
+                            👤
+                          </span>
+
+                                    <span className="flex-1">
+                            My Profile
+                          </span>
+
+                                    <span className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-primary-500">
+                            →
+                          </span>
+
+                                  </Link>
+                              )}
+
+
+                              {/* Logout */}
+                              <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => void onLogout()}
+                                  data-testid="logout"
+                                  className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+                              >
+
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-500 dark:bg-red-500/10 dark:text-red-400">
+                          ↪
+                        </span>
+
+                                <span className="flex-1">
+                          Log out
+                        </span>
+
+                              </button>
+
+                            </div>
+
+                          </div>
+                      )}
+
+                    </div>
+                  </>
+
+              ) : (
+
+                  /* =================================================
+                     GUEST USER
+                  ================================================== */
+                  <div className="hidden items-center gap-2 sm:flex">
+
+                    <Link
+                        to="/login"
+                        data-testid="header-login"
+                        className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
+                    >
+                      Log in
+                    </Link>
+
+                    <Link
+                        to="/register"
+                        data-testid="header-signup"
+                        className="group inline-flex items-center rounded-xl bg-gradient-to-r from-primary-600 to-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary-600/20 transition-all duration-300 hover:-translate-y-0.5 hover:from-primary-700 hover:to-indigo-700 hover:shadow-primary-600/30"
+                    >
+                      Get started
+
+                      <span className="ml-2 transition-transform duration-200 group-hover:translate-x-0.5">
+                  →
+                </span>
+                    </Link>
+
+                  </div>
+              )}
+
+
+              {/* =================================================
+              MOBILE / TABLET MENU
+
+              lg:hidden means the hamburger can appear before
+              the full desktop nav becomes available.
+          ================================================== */}
+              <button
+                  type="button"
+                  data-testid="mobile-menu-toggle"
+                  aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+                  aria-expanded={mobileOpen}
+                  aria-controls="mobile-menu"
+                  onClick={() => setMobileOpen((o) => !o)}
+                  className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200 xl:hidden ${
+                      mobileOpen
+                          ? 'bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-300'
+                          : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/5'
+                  }`}
+              >
+                {mobileOpen ? (
+                    <X
+                        className="h-6 w-6"
+                        aria-hidden="true"
+                    />
+                ) : (
+                    <Menu
+                        className="h-6 w-6"
+                        aria-hidden="true"
+                    />
+                )}
+              </button>
+
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* mobile menu */}
-      {mobileOpen && (
-        <nav id="mobile-menu" aria-label="Mobile" data-testid="mobile-menu"
-          className="border-t border-line bg-surface px-4 pb-4 pt-2 shadow-lg lg:hidden">
-          <div className="max-h-[70vh] space-y-0.5 overflow-y-auto">
-            {appLinks.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.end} onClick={closeAll} className={mobileLinkClass}>
-                {item.label}
-              </NavLink>
-            ))}
-            {appLinks.length > 0 && <div className="my-2 border-t border-line" />}
-            {publicLinks.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.end} onClick={closeAll} className={mobileLinkClass}>
-                {item.label}
-              </NavLink>
-            ))}
-            <div className="my-2 border-t border-line" />
-            {isAuthenticated ? (
-              <>
-                {role !== 'admin' && (
-                  <NavLink to="/profile" onClick={closeAll} className={mobileLinkClass}>
-                    My Profile
-                  </NavLink>
+
+        {/* =========================================================
+        MOBILE MENU
+    ========================================================= */}
+        {mobileOpen && (
+            <nav
+                id="mobile-menu"
+                aria-label="Mobile"
+                data-testid="mobile-menu"
+                className="border-t border-slate-200/80 bg-white/95 px-4 pb-5 pt-3 shadow-[0_15px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl lg:hidden dark:border-white/10 dark:bg-slate-950/95"
+            >
+
+              <div className="mx-auto max-h-[75vh] max-w-7xl space-y-1 overflow-y-auto">
+
+                {/* Role links */}
+                {appLinks.map((item) => (
+                    <NavLink
+                        key={item.to}
+                        to={item.to}
+                        end={item.end}
+                        onClick={closeAll}
+                        className={({ isActive }) =>
+                            `flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                                isActive
+                                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/10 dark:text-primary-300'
+                                    : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-white/5'
+                            }`
+                        }
+                    >
+                      {item.label}
+
+                      <span className="text-slate-300">
+                →
+              </span>
+                    </NavLink>
+                ))}
+
+
+                {appLinks.length > 0 && (
+                    <div className="my-3 border-t border-slate-200 dark:border-white/10" />
                 )}
-                <button type="button" onClick={() => void onLogout()} data-testid="mobile-logout"
-                  className="block w-full rounded-md px-3 py-2.5 text-left text-base font-medium text-danger-600 hover:bg-danger-50 dark:text-danger-400 dark:hover:bg-danger-500/10">
-                  Log out
-                </button>
-              </>
-            ) : (
-              <div className="flex gap-2 px-1 pt-1">
-                <Link to="/login" onClick={closeAll}
-                  className="flex-1 rounded-md border border-line-strong px-4 py-2 text-center text-sm font-medium text-ink-muted hover:bg-surface-muted">
-                  Log in
-                </Link>
-                <Link to="/register" onClick={closeAll}
-                  className="flex-1 rounded-md bg-primary-600 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-primary-700">
-                  Sign up
-                </Link>
+
+
+                {/* Public links
+              These remain available in mobile even when logged in. */}
+                {publicLinks.map((item) => (
+                    <NavLink
+                        key={item.to}
+                        to={item.to}
+                        end={item.end}
+                        onClick={closeAll}
+                        className={({ isActive }) =>
+                            `flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                                isActive
+                                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/10 dark:text-primary-300'
+                                    : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-white/5'
+                            }`
+                        }
+                    >
+                      {item.label}
+
+                      <span className="text-slate-300">
+                →
+              </span>
+                    </NavLink>
+                ))}
+
+
+                <div className="my-3 border-t border-slate-200 dark:border-white/10" />
+
+
+                {/* Authenticated mobile */}
+                {isAuthenticated ? (
+                    <>
+
+                      {role !== 'admin' && (
+                          <NavLink
+                              to="/profile"
+                              onClick={closeAll}
+                              className="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-white/5"
+                          >
+                            My Profile
+
+                            <span className="text-slate-300">
+                    →
+                  </span>
+                          </NavLink>
+                      )}
+
+                      <button
+                          type="button"
+                          onClick={() => void onLogout()}
+                          data-testid="mobile-logout"
+                          className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+                      >
+                        Log out
+
+                        <span>
+                  ↪
+                </span>
+                      </button>
+
+                    </>
+
+                ) : (
+
+                    /* Guest mobile */
+                    <div className="grid grid-cols-2 gap-2">
+
+                      <Link
+                          to="/login"
+                          onClick={closeAll}
+                          className="rounded-xl border border-slate-200 px-4 py-3 text-center text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                      >
+                        Log in
+                      </Link>
+
+                      <Link
+                          to="/register"
+                          onClick={closeAll}
+                          className="rounded-xl bg-gradient-to-r from-primary-600 to-indigo-600 px-4 py-3 text-center text-sm font-bold text-white shadow-lg shadow-primary-600/20"
+                      >
+                        Get started
+                      </Link>
+
+                    </div>
+                )}
+
               </div>
-            )}
-          </div>
-        </nav>
-      )}
-    </header>
+
+            </nav>
+        )}
+
+      </header>
   );
 }
