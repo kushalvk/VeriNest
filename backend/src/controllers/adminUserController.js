@@ -13,6 +13,12 @@ const Notification = require('../models/Notification');
 const RefreshToken = require('../models/RefreshToken');
 const notificationService = require('../services/notificationService');
 const auditService = require('../services/auditService');
+const emailService = require('../services/emailService');
+const {
+  adminAccountBlocked,
+  adminAccountUnblocked,
+  adminAccountDeleted,
+} = require('../emails/baseTemplate');
 
 const ROLES = ['tenant', 'landlord', 'admin'];
 const STATUSES = ['pending', 'active', 'blocked'];
@@ -175,63 +181,174 @@ const updateUserStatus = async (req, res, next) => {
     const { id } = req.params;
     const { status, reason } = req.body || {};
 
+    const adminMessage =
+        typeof reason === 'string'
+            ? reason.trim().slice(0, 500)
+            : '';
+
     if (!status || !SETTABLE_STATUSES.includes(status)) {
       return res.status(422).json({
         error: `status must be one of: ${SETTABLE_STATUSES.join(', ')}`,
       });
     }
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({
+        error: 'User not found',
+      });
     }
+
     if (id === req.user.id) {
-      return res.status(403).json({ error: 'You cannot change your own account status' });
+      return res.status(403).json({
+        error: 'You cannot change your own account status',
+      });
     }
 
     const user = await User.findById(id);
+
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({
+        error: 'User not found',
+      });
     }
+
     if (user.role === 'admin') {
-      return res.status(403).json({ error: 'Admin accounts cannot be blocked' });
+      return res.status(403).json({
+        error: 'Admin accounts cannot be blocked',
+      });
     }
 
     user.accountStatus = status;
     await user.save();
 
     if (status === 'blocked') {
-      // Kill every live session; the access token expires within 15 minutes.
-      await RefreshToken.deleteMany({ userId: id });
+      await RefreshToken.deleteMany({
+        userId: id,
+      });
     }
 
-    // Side effects: must never roll back the status change.
+    /*
+     * ------------------------------------------------------------
+     * SEND DIRECT EMAIL
+     *
+     * emailService is the ONLY service responsible for the email.
+     * ------------------------------------------------------------
+     */
+
+    try {
+      const isBlocked = status === 'blocked';
+
+      const html = isBlocked
+          ? adminAccountBlocked({
+            fullName: user.fullName,
+            message: adminMessage,
+          })
+          : adminAccountUnblocked({
+            fullName: user.fullName,
+            message: adminMessage,
+          });
+
+      const text = isBlocked
+          ? [
+            `Hi ${user.fullName || 'there'},`,
+            '',
+            'Your VeriNest account has been blocked by an administrator.',
+            adminMessage
+                ? `Message from the administrator: ${adminMessage}`
+                : '',
+            '',
+            'You will not be able to sign in while your account is blocked.',
+            'If you believe this action was taken in error, please contact VeriNest support.',
+          ]
+              .filter(Boolean)
+              .join('\n')
+          : [
+            `Hi ${user.fullName || 'there'},`,
+            '',
+            'Your VeriNest account has been restored by an administrator.',
+            adminMessage
+                ? `Message from the administrator: ${adminMessage}`
+                : '',
+            '',
+            'You can now sign in and continue using VeriNest.',
+          ]
+              .filter(Boolean)
+              .join('\n');
+
+      await emailService.sendEmail({
+        to: user.email,
+        subject: isBlocked
+            ? 'Your VeriNest account has been blocked'
+            : 'Your VeriNest account has been restored',
+        html,
+        text,
+      });
+
+      console.log(
+          `[admin] ${isBlocked ? 'Block' : 'Unblock'} email sent to ${user.email}`
+      );
+    } catch (err) {
+      console.error(
+          `[admin] Account status email failed for ${user.email}: ${err.message}`
+      );
+    }
+
     try {
       await notificationService.createNotification({
         receiverId: user._id,
-        title: status === 'blocked' ? 'Account blocked' : 'Account reactivated',
+        title:
+            status === 'blocked'
+                ? 'Account blocked'
+                : 'Account reactivated',
+
         message:
-          status === 'blocked'
-            ? `Your VeriNest account has been blocked by an administrator.${
-                reason ? ` Reason: ${reason}` : ''
-              } Contact support if you believe this is a mistake.`
-            : 'Your VeriNest account has been reactivated. You can sign in again.',
-        type: 'email',
+            status === 'blocked'
+                ? [
+                  'Your VeriNest account has been blocked by an administrator.',
+                  adminMessage
+                      ? `Reason: ${adminMessage}`
+                      : null,
+                  'Contact support if you believe this is a mistake.',
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                : [
+                  'Your VeriNest account has been reactivated.',
+                  adminMessage
+                      ? `Message from administrator: ${adminMessage}`
+                      : null,
+                ]
+                    .filter(Boolean)
+                    .join(' '),
+
+        type: 'push',
         event: 'general',
       });
     } catch (err) {
-      console.error(`[admin] Notification creation failed: ${err.message}`);
+      console.error(
+          `[admin] In-app notification failed: ${err.message}`
+      );
     }
+
     try {
       await auditService.logAction({
         userId: req.user.id,
-        action: status === 'blocked' ? 'user_blocked' : 'user_unblocked',
+        action:
+            status === 'blocked'
+                ? 'user_blocked'
+                : 'user_unblocked',
         module: 'users',
         req,
       });
     } catch (err) {
-      console.error(`[admin] Audit log creation failed: ${err.message}`);
+      console.error(
+          `[admin] Audit log creation failed: ${err.message}`
+      );
     }
 
-    return res.status(200).json({ user: user.toJSON() });
+    return res.status(200).json({
+      user: user.toJSON(),
+    });
   } catch (err) {
     return next(err);
   }
@@ -251,61 +368,207 @@ const updateUserStatus = async (req, res, next) => {
 const deleteUser = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { reason } = req.body || {};
+
+    const adminMessage =
+        typeof reason === 'string'
+            ? reason.trim().slice(0, 500)
+            : '';
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({
+        error: 'User not found',
+      });
     }
+
     if (id === req.user.id) {
-      return res.status(403).json({ error: 'You cannot delete your own account' });
+      return res.status(403).json({
+        error: 'You cannot delete your own account',
+      });
     }
 
     const user = await User.findById(id);
+
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    if (user.role === 'admin') {
-      return res.status(403).json({ error: 'Admin accounts cannot be deleted' });
+      return res.status(404).json({
+        error: 'User not found',
+      });
     }
 
+    if (user.role === 'admin') {
+      return res.status(403).json({
+        error: 'Admin accounts cannot be deleted',
+      });
+    }
+
+    /*
+     * ------------------------------------------------------------
+     * ACTIVE AGREEMENT CHECK
+     * ------------------------------------------------------------
+     */
+
     const activeAgreements = await Agreement.countDocuments({
-      $or: [{ tenantId: id }, { landlordId: id }],
+      $or: [
+        { tenantId: id },
+        { landlordId: id },
+      ],
       status: 'active',
     });
+
     if (activeAgreements > 0) {
       return res.status(409).json({
         error: `This user is party to ${activeAgreements} active agreement${
-          activeAgreements === 1 ? '' : 's'
+            activeAgreements === 1 ? '' : 's'
         }. Block the account instead, or end the agreement first.`,
       });
     }
 
-    const partyFilter = { $or: [{ tenantId: id }, { landlordId: id }] };
-    // Applications on this landlord's properties belong to other tenants, but
-    // become meaningless once the property is gone — remove them by property.
-    const propertyIds = (await Property.find({ landlordId: id }).select('_id')).map(
-      (p) => p._id
-    );
+    const userEmail = user.email;
+    const userFullName = user.fullName || 'there';
+
+    const partyFilter = {
+      $or: [
+        { tenantId: id },
+        { landlordId: id },
+      ],
+    };
+
+    const propertyIds = (
+        await Property.find({
+          landlordId: id,
+        }).select('_id')
+    ).map((p) => p._id);
+
+    /*
+     * ------------------------------------------------------------
+     * SEND DELETION EMAIL
+     *
+     * This happens BEFORE Notification/User deletion.
+     *
+     * Most importantly, this uses emailService DIRECTLY.
+     * ------------------------------------------------------------
+     */
+
+    try {
+      const html = adminAccountDeleted({
+        fullName: userFullName,
+        message: adminMessage,
+      });
+
+      const text = [
+        `Hi ${userFullName},`,
+        '',
+        'Your VeriNest account has been permanently deleted by an administrator.',
+        adminMessage
+            ? `Message from the administrator: ${adminMessage}`
+            : '',
+        '',
+        'You will no longer be able to sign in to this account.',
+        '',
+        'If you believe this action was taken incorrectly, please contact VeriNest support.',
+      ]
+          .filter(Boolean)
+          .join('\n');
+
+      await emailService.sendEmail({
+        to: userEmail,
+        subject: 'Your VeriNest account has been deleted',
+        html,
+        text,
+      });
+
+      console.log(
+          `[admin] Account deletion email sent to ${userEmail}`
+      );
+    } catch (err) {
+      /*
+       * Email failure must NOT prevent the account deletion.
+       */
+      console.error(
+          `[admin] Account deletion email failed for ${userEmail}: ${err.message}`
+      );
+    }
+
+    /*
+     * ------------------------------------------------------------
+     * DELETE RELATED DATA
+     * ------------------------------------------------------------
+     */
 
     await Promise.all([
-      TenantProfile.deleteOne({ userId: id }),
-      LandlordProfile.deleteOne({ userId: id }),
-      Document.deleteMany({ tenantId: id }),
-      TrustScoreHistory.deleteMany({ tenantId: id }),
-      Notification.deleteMany({ receiverId: id }),
-      RefreshToken.deleteMany({ userId: id }),
-      VerificationRequest.deleteMany(partyFilter),
-      Agreement.deleteMany(partyFilter),
-      RentalHistory.deleteMany(partyFilter),
-      Application.deleteMany(
-        propertyIds.length
-          ? { $or: [{ tenantId: id }, { landlordId: id }, { propertyId: { $in: propertyIds } }] }
-          : partyFilter
+      TenantProfile.deleteOne({
+        userId: id,
+      }),
+
+      LandlordProfile.deleteOne({
+        userId: id,
+      }),
+
+      Document.deleteMany({
+        tenantId: id,
+      }),
+
+      TrustScoreHistory.deleteMany({
+        tenantId: id,
+      }),
+
+      Notification.deleteMany({
+        receiverId: id,
+      }),
+
+      RefreshToken.deleteMany({
+        userId: id,
+      }),
+
+      VerificationRequest.deleteMany(
+          partyFilter
       ),
-      Property.deleteMany({ landlordId: id }),
+
+      Agreement.deleteMany(
+          partyFilter
+      ),
+
+      RentalHistory.deleteMany(
+          partyFilter
+      ),
+
+      Application.deleteMany(
+          propertyIds.length
+              ? {
+                $or: [
+                  { tenantId: id },
+                  { landlordId: id },
+                  {
+                    propertyId: {
+                      $in: propertyIds,
+                    },
+                  },
+                ],
+              }
+              : partyFilter
+      ),
+
+      Property.deleteMany({
+        landlordId: id,
+      }),
     ]);
 
-    await User.deleteOne({ _id: id });
+    /*
+     * ------------------------------------------------------------
+     * DELETE USER
+     * ------------------------------------------------------------
+     */
 
-    // Audit logs are deliberately kept: they are the record of what happened.
+    await User.deleteOne({
+      _id: id,
+    });
+
+    /*
+     * ------------------------------------------------------------
+     * AUDIT LOG
+     * ------------------------------------------------------------
+     */
+
     try {
       await auditService.logAction({
         userId: req.user.id,
@@ -314,10 +577,15 @@ const deleteUser = async (req, res, next) => {
         req,
       });
     } catch (err) {
-      console.error(`[admin] Audit log creation failed: ${err.message}`);
+      console.error(
+          `[admin] Audit log creation failed: ${err.message}`
+      );
     }
 
-    return res.status(200).json({ message: 'User deleted', userId: id });
+    return res.status(200).json({
+      message: 'User deleted',
+      userId: id,
+    });
   } catch (err) {
     return next(err);
   }

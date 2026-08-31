@@ -165,9 +165,13 @@ export const setUserStatus = async (
   return data.user;
 };
 
-export const deleteUser = async (id: string) => {
-  const { data } = await client.delete<{ message: string; userId: string }>(
-    `/admin/users/${id}`
-  );
-  return data;
+export const deleteUser = async (
+    id: string,
+    reason?: string
+) => {
+  await client.delete(`/admin/users/${id}`, {
+    data: {
+      reason: reason?.trim() || undefined,
+    },
+  });
 };

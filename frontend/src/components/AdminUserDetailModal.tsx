@@ -87,10 +87,12 @@ export default function AdminUserDetailModal({
 
   const remove = async () => {
     if (busy || confirmText !== DELETE_PHRASE) return;
+
     setBusy('delete');
     setError('');
+
     try {
-      await adminApi.deleteUser(user._id);
+      await adminApi.deleteUser(user._id, reason.trim());
       onDeleted(user._id);
     } catch (err) {
       setError(getApiError(err));
@@ -188,16 +190,32 @@ export default function AdminUserDetailModal({
             </p>
           ) : (
             <>
-              {status !== 'blocked' && (
-                <div className="mt-2">
-                  <label htmlFor="block-reason" className={labelClass}>
-                    Reason (optional — included in the email to the user)
-                  </label>
-                  <input id="block-reason" type="text" className={inputClass} value={reason}
+              <div className="mt-2">
+                <label htmlFor="admin-message" className={labelClass}>
+                  Message to user
+                  <span className="ml-1 font-normal text-ink-faint">
+      (optional)
+    </span>
+                </label>
+
+                <textarea
+                    id="admin-message"
+                    rows={3}
+                    maxLength={500}
+                    className={`${inputClass} resize-none`}
+                    value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="e.g. Repeated fraudulent document uploads" />
-                </div>
-              )}
+                    placeholder={
+                      status === 'blocked'
+                          ? 'e.g. Your account has been reviewed and restored.'
+                          : 'e.g. Repeated fraudulent document uploads.'
+                    }
+                />
+
+                <p className="mt-1 text-xs text-ink-faint">
+                  This message will be included in the email sent to the user.
+                </p>
+              </div>
 
               <div className="mt-3 flex flex-wrap gap-3">
                 <button type="button" onClick={() => void toggleStatus()} disabled={busy !== null}
@@ -232,37 +250,64 @@ export default function AdminUserDetailModal({
               </p>
 
               {confirmDelete && (
-                <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10"
-                  data-testid="delete-confirm">
-                  <p className="text-sm font-semibold text-red-800 dark:text-red-300">
-                    Permanently delete {user.fullName}?
-                  </p>
-                  <p className="mt-1 text-sm text-red-700 dark:text-red-400">
-                    This also removes their profile, documents, applications, verification
-                    requests{user.role === 'landlord' ? ', properties' : ''} and rental
-                    records. It cannot be undone.
-                  </p>
-                  <label htmlFor="delete-confirm-input" className="mt-3 block text-xs font-medium text-red-800 dark:text-red-300">
-                    Type {DELETE_PHRASE} to confirm
-                  </label>
-                  <input id="delete-confirm-input" type="text" value={confirmText}
-                    onChange={(e) => setConfirmText(e.target.value)}
-                    data-testid="delete-confirm-input"
-                    className={`${inputClass} mt-1`} />
-                  <div className="mt-3 flex gap-3">
-                    <button type="button" onClick={() => void remove()}
-                      disabled={busy !== null || confirmText !== DELETE_PHRASE}
-                      data-testid="confirm-delete-user"
-                      className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
-                      {busy === 'delete' ? 'Deleting…' : 'Delete permanently'}
-                    </button>
-                    <button type="button" disabled={busy !== null}
-                      onClick={() => { setConfirmDelete(false); setConfirmText(''); }}
-                      className="rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface-muted disabled:opacity-50">
-                      Cancel
-                    </button>
+                  <div
+                      className="mt-4 rounded-md border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10"
+                      data-testid="delete-confirm">
+                    <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+                      Permanently delete {user.fullName}?
+                    </p>
+                    <p className="mt-1 text-sm text-red-700 dark:text-red-400">
+                      This also removes their profile, documents, applications, verification
+                      requests{user.role === 'landlord' ? ', properties' : ''} and rental
+                      records. It cannot be undone.
+                    </p>
+                    <div className="mt-4">
+                      <label htmlFor="delete-message" className={labelClass}>
+                        Message to user
+                        <span className="ml-1 font-normal text-ink-faint">
+      (optional)
+    </span>
+                      </label>
+
+                      <textarea
+                          id="delete-message"
+                          rows={3}
+                          maxLength={500}
+                          className={`${inputClass} mt-1 resize-none`}
+                          value={reason}
+                          onChange={(e) => setReason(e.target.value)}
+                          placeholder="e.g. Account removed because it was created for testing."
+                      />
+
+                      <p className="mt-1 text-xs text-ink-faint">
+                        The user will receive this message in their account deletion email.
+                      </p>
+                    </div>
+                    <label htmlFor="delete-confirm-input"
+                           className="mt-3 block text-xs font-medium text-red-800 dark:text-red-300">
+                      Type {DELETE_PHRASE} to confirm
+                    </label>
+                    <input id="delete-confirm-input" type="text" value={confirmText}
+                           onChange={(e) => setConfirmText(e.target.value)}
+                           data-testid="delete-confirm-input"
+                           className={`${inputClass} mt-1`}/>
+                    <div className="mt-3 flex gap-3">
+                      <button type="button" onClick={() => void remove()}
+                              disabled={busy !== null || confirmText !== DELETE_PHRASE}
+                              data-testid="confirm-delete-user"
+                              className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
+                        {busy === 'delete' ? 'Deleting…' : 'Delete permanently'}
+                      </button>
+                      <button type="button" disabled={busy !== null}
+                              onClick={() => {
+                                setConfirmDelete(false);
+                                setConfirmText('');
+                              }}
+                              className="rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface-muted disabled:opacity-50">
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                </div>
               )}
             </>
           )}
@@ -272,7 +317,7 @@ export default function AdminUserDetailModal({
 
         <div className="border-t border-line bg-surface-muted px-5 py-3 text-right">
           <button type="button" onClick={onClose} disabled={busy !== null}
-            className="rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface disabled:opacity-50">
+                  className="rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface disabled:opacity-50">
             Close
           </button>
         </div>

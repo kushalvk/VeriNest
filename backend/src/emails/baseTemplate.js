@@ -75,4 +75,120 @@ const renderBase = (bodyHtml) => `<!DOCTYPE html>
 </body>
 </html>`;
 
-module.exports = { renderBase, ctaButton, escapeHtml, BRAND_NAME };
+const adminAccountBlocked = ({ fullName, message }) => {
+    return renderBase(`
+    <h1 style="margin:0 0 16px;font-size:24px;color:${TEXT_DARK};">
+      Your account has been blocked
+    </h1>
+
+    <p style="margin:0 0 16px;">
+      Hi ${escapeHtml(fullName)},
+    </p>
+
+    <p style="margin:0 0 16px;">
+      Your VeriNest account has been blocked by an administrator.
+      You will not be able to sign in while the account remains blocked.
+    </p>
+
+    ${
+        message
+            ? `
+          <div style="
+            margin:20px 0;
+            padding:16px;
+            border-left:4px solid #f59e0b;
+            background-color:#fff7ed;
+          ">
+            <strong>Message from the administrator</strong>
+            <p style="margin:8px 0 0;">
+              ${escapeHtml(message)}
+            </p>
+          </div>
+        `
+            : ''
+    }
+
+    <p style="margin:0;">
+      If you believe this was done in error, please contact VeriNest support.
+    </p>
+  `);
+};
+
+
+const adminAccountUnblocked = ({ fullName, message }) => {
+    return renderBase(`
+    <h1 style="margin:0 0 16px;font-size:24px;color:${TEXT_DARK};">
+      Your account has been restored
+    </h1>
+
+    <p style="margin:0 0 16px;">
+      Hi ${escapeHtml(fullName)},
+    </p>
+
+    <p style="margin:0 0 16px;">
+      Your VeriNest account has been restored by an administrator.
+      You can sign in and continue using the platform.
+    </p>
+
+    ${
+        message
+            ? `
+          <div style="
+            margin:20px 0;
+            padding:16px;
+            border-left:4px solid #22c55e;
+            background-color:#f0fdf4;
+          ">
+            <strong>Message from the administrator</strong>
+            <p style="margin:8px 0 0;">
+              ${escapeHtml(message)}
+            </p>
+          </div>
+        `
+            : ''
+    }
+  `);
+};
+
+
+const adminAccountDeleted = ({ fullName, message }) => {
+    return renderBase(`
+    <h1 style="margin:0 0 16px;font-size:24px;color:${TEXT_DARK};">
+      Your account has been deleted
+    </h1>
+
+    <p style="margin:0 0 16px;">
+      Hi ${escapeHtml(fullName)},
+    </p>
+
+    <p style="margin:0 0 16px;">
+      Your VeriNest account has been permanently deleted by an administrator.
+      You will no longer be able to sign in to this account.
+    </p>
+
+    ${
+        message
+            ? `
+          <div style="
+            margin:20px 0;
+            padding:16px;
+            border-left:4px solid #ef4444;
+            background-color:#fef2f2;
+          ">
+            <strong>Message from the administrator</strong>
+            <p style="margin:8px 0 0;">
+              ${escapeHtml(message)}
+            </p>
+          </div>
+        `
+            : ''
+    }
+
+    <p style="margin:0;">
+      If you believe this action was taken incorrectly, please contact
+      VeriNest support.
+    </p>
+  `);
+};
+
+module.exports = { renderBase, ctaButton, escapeHtml, BRAND_NAME, adminAccountDeleted, adminAccountUnblocked, adminAccountBlocked };
