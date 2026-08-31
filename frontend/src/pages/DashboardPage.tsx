@@ -104,34 +104,145 @@ function StatCard({ icon: Icon, label, value, hint, attention }: {
   );
 }
 
-function ActionCard({ to, icon: Icon, title, text }: {
+function DashboardAction({
+                           to,
+                           icon: Icon,
+                           title,
+                           text,
+                           label,
+                           featured = false,
+                           tone = 'primary',
+                         }: {
   to: string;
   icon: IconType;
   title: string;
   text: string;
+  label?: string;
+  featured?: boolean;
+  tone?: 'primary' | 'emerald' | 'amber' | 'violet';
 }) {
+  const tones = {
+    primary: {
+      visual: 'from-primary-600 via-indigo-600 to-violet-700',
+      glow: 'bg-primary-400/30',
+      icon: 'bg-white/15 text-white',
+      badge: 'bg-white/15 text-white',
+    },
+    emerald: {
+      visual: 'from-emerald-600 via-teal-600 to-cyan-700',
+      glow: 'bg-emerald-300/30',
+      icon: 'bg-white/15 text-white',
+      badge: 'bg-white/15 text-white',
+    },
+    amber: {
+      visual: 'from-amber-500 via-orange-600 to-rose-600',
+      glow: 'bg-amber-200/30',
+      icon: 'bg-white/15 text-white',
+      badge: 'bg-white/15 text-white',
+    },
+    violet: {
+      visual: 'from-violet-600 via-purple-600 to-fuchsia-700',
+      glow: 'bg-violet-300/30',
+      icon: 'bg-white/15 text-white',
+      badge: 'bg-white/15 text-white',
+    },
+  };
+
+  const theme = tones[tone];
+
+  if (featured) {
+    return (
+        <Link
+            to={to}
+            className="group relative min-h-[280px] overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_15px_45px_rgba(15,23,42,0.10)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_25px_60px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-slate-900"
+        >
+          {/* Visual background */}
+          <div
+              className={`absolute inset-0 bg-gradient-to-br ${theme.visual}`}
+          />
+
+          {/* Decorative circles */}
+          <div
+              className={`absolute -right-20 -top-20 h-64 w-64 rounded-full ${theme.glow} blur-3xl transition-transform duration-700 group-hover:scale-125`}
+          />
+
+          <div className="absolute right-8 top-8 h-32 w-32 rounded-full border border-white/10 bg-white/5 backdrop-blur-sm" />
+          <div className="absolute right-16 top-16 h-16 w-16 rounded-full border border-white/10 bg-white/5" />
+
+          {/* Content */}
+          <div className="relative flex h-full flex-col justify-between p-7">
+            <div>
+              <div className="flex items-center justify-between">
+              <span
+                  className={`flex h-14 w-14 items-center justify-center rounded-2xl ${theme.icon} shadow-lg backdrop-blur-md`}
+              >
+                <Icon className="h-7 w-7" aria-hidden="true" />
+              </span>
+
+                {label && (
+                    <span
+                        className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider ${theme.badge} backdrop-blur-md`}
+                    >
+                  {label}
+                </span>
+                )}
+              </div>
+
+              <h3 className="mt-8 max-w-md text-2xl font-black tracking-tight text-white sm:text-3xl">
+                {title}
+              </h3>
+
+              <p className="mt-3 max-w-lg text-sm leading-6 text-white/80">
+                {text}
+              </p>
+            </div>
+
+            <div className="mt-6 flex items-center gap-2 text-sm font-bold text-white">
+              Explore now
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 transition-all duration-300 group-hover:translate-x-1 group-hover:bg-white/25">
+              <ArrowRight className="h-4 w-4" />
+            </span>
+            </div>
+          </div>
+        </Link>
+    );
+  }
+
   return (
       <Link
           to={to}
-          data-testid="action-card"
-          className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-primary-300 hover:shadow-[0_18px_40px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-slate-900/80 dark:hover:border-primary-500/40"
+          className="group relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.07)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(15,23,42,0.13)] dark:border-white/10 dark:bg-slate-900"
       >
-        <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-primary-500/5 blur-2xl transition-transform duration-500 group-hover:scale-150" />
+        <div
+            className={`absolute -right-12 -top-12 h-32 w-32 rounded-full ${theme.glow} opacity-30 blur-3xl transition-transform duration-500 group-hover:scale-150`}
+        />
 
-        <div className="relative flex items-start gap-4">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-50 to-indigo-100 text-primary-600 ring-1 ring-primary-100 transition-all duration-300 group-hover:scale-105 group-hover:from-primary-100 group-hover:to-indigo-200 dark:from-primary-500/15 dark:to-indigo-500/15 dark:text-primary-300 dark:ring-primary-400/20">
-          <Icon className="h-6 w-6" aria-hidden="true" />
-        </span>
+        <div className="relative">
+          <div className="flex items-center justify-between">
+          <span
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${theme.visual} text-white shadow-lg`}
+          >
+            <Icon className="h-6 w-6" aria-hidden="true" />
+          </span>
 
-          <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-white">
-              {title}
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-400 transition-all duration-300 group-hover:translate-x-1 group-hover:bg-primary-100 group-hover:text-primary-600 dark:bg-white/5 dark:text-slate-500 dark:group-hover:bg-primary-500/15 dark:group-hover:text-primary-300">
-              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </span>
-            </p>
-            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{text}</p>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-400 transition-all duration-300 group-hover:translate-x-1 group-hover:bg-primary-50 group-hover:text-primary-600 dark:bg-white/5 dark:text-slate-500 dark:group-hover:bg-primary-500/15 dark:group-hover:text-primary-300">
+            <ArrowRight className="h-4 w-4" />
+          </span>
           </div>
+
+          {label && (
+              <p className="mt-5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                {label}
+              </p>
+          )}
+
+          <h3 className="mt-1 text-lg font-black text-slate-900 dark:text-white">
+            {title}
+          </h3>
+
+          <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+            {text}
+          </p>
         </div>
       </Link>
   );
@@ -393,65 +504,306 @@ export default function DashboardPage() {
           </section>
 
           {/* Quick actions */}
+          {/* Dashboard-specific actions */}
           <section data-testid="dashboard-actions">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary-600 dark:text-primary-400">
-                Shortcuts
-              </p>
-              <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-                Quick actions
-              </h2>
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                Jump directly to the tools you use most.
-              </p>
-            </div>
 
-            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {role === 'tenant' && (
-                  <>
-                    <ActionCard to="/properties" icon={Search} title="Browse properties"
-                                text="Search listings by city, rent, and amenities — then apply in one click." />
-                    <ActionCard to="/documents" icon={FileText} title="My documents"
-                                text="Upload and track Aadhaar, PAN, and salary slips through verification." />
-                    <ActionCard to="/my-applications" icon={ClipboardList} title="My applications"
-                                text="Follow every application from submission to agreement." />
-                    <ActionCard to="/verification-requests" icon={ShieldCheck} title="Verification requests"
-                                text="Approve or decline landlord requests to view your documents." />
-                    <ActionCard to="/rental-history" icon={KeyRound} title="Rental history"
-                                text="Your tenancies, ratings, and the reputation you carry forward." />
-                    <ActionCard to="/profile" icon={UserRound} title="My profile"
-                                text="Keep your personal, employment, and address details current." />
-                  </>
-              )}
+            {/* ================= TENANT ================= */}
+            {role === 'tenant' && (
+                <div>
+                  <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary-600 dark:text-primary-400">
+                        Your rental journey
+                      </p>
 
-              {role === 'landlord' && (
-                  <>
-                    <ActionCard to="/my-properties" icon={Building2} title="My properties"
-                                text="Create listings, upload photos, and manage availability." />
-                    <ActionCard to="/received-applications" icon={Inbox} title="Received applications"
-                                text="Review verified applicants and request document access." />
-                    <ActionCard to="/rental-history" icon={KeyRound} title="Rental history"
-                                text="Track active tenancies, complete them, and rate your tenants." />
-                    <ActionCard to="/properties" icon={Search} title="Browse the market"
-                                text="See what similar properties list for in your city." />
-                    <ActionCard to="/profile" icon={UserRound} title="My profile"
-                                text="Company details and contact information tenants will see." />
-                  </>
-              )}
+                      <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+                        Find a place that feels like home
+                      </h2>
 
-              {role === 'admin' && (
-                  <>
-                    <ActionCard to="/admin" icon={FileText} title="Document review"
-                                text="Work the verification queue — approve clean documents, reject with remarks." />
-                    <ActionCard to="/admin/users" icon={Users} title="Manage users"
-                                text="Every tenant and landlord account — inspect activity, block or remove." />
-                    <ActionCard to="/admin/trust-score" icon={ShieldCheck} title="Trust scores"
-                                text="Recalculate a tenant's score and audit the reasons behind it." />
-                    <ActionCard to="/properties" icon={Search} title="Browse listings"
-                                text="See the platform the way tenants and landlords do." />
-                  </>
-              )}
-            </div>
+                      <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+                        Everything you need to discover properties, manage documents,
+                        and move into your next home.
+                      </p>
+                    </div>
+
+                    <div className="hidden rounded-2xl border border-primary-100 bg-primary-50 px-4 py-2 text-xs font-bold text-primary-700 dark:border-primary-500/20 dark:bg-primary-500/10 dark:text-primary-300 sm:block">
+                      🏠 Tenant workspace
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+
+                    {/* Featured */}
+                    <DashboardAction
+                        to="/properties"
+                        icon={Search}
+                        title="Find your next home"
+                        text="Explore verified rental properties by city, budget, amenities, and availability."
+                        label="Discover"
+                        featured
+                        tone="primary"
+                    />
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+
+                      <DashboardAction
+                          to="/documents"
+                          icon={FileText}
+                          title="Your documents"
+                          text="Keep Aadhaar, PAN and salary documents ready for verification."
+                          label="Verification"
+                          tone="violet"
+                      />
+
+                      <DashboardAction
+                          to="/my-applications"
+                          icon={ClipboardList}
+                          title="Applications"
+                          text="Track every application from submission to landlord decision."
+                          label="Track"
+                          tone="emerald"
+                      />
+
+                      <DashboardAction
+                          to="/verification-requests"
+                          icon={ShieldCheck}
+                          title="Access requests"
+                          text="Review landlords requesting access to your verified documents."
+                          label="Security"
+                          tone="amber"
+                      />
+
+                      <DashboardAction
+                          to="/rental-history"
+                          icon={KeyRound}
+                          title="Rental history"
+                          text="View your previous stays, ratings, and rental reputation."
+                          label="History"
+                          tone="primary"
+                      />
+
+                    </div>
+                  </div>
+
+                  {/* Profile strip */}
+                  <Link
+                      to="/profile"
+                      className="group mt-4 flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition hover:border-primary-200 hover:shadow-md dark:border-white/10 dark:bg-slate-900"
+                  >
+                    <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300">
+            <UserRound className="h-5 w-5" />
+          </span>
+
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">
+                          Keep your profile up to date
+                        </p>
+
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          A complete profile helps landlords trust your application.
+                        </p>
+                      </div>
+                    </div>
+
+                    <ArrowRight className="h-5 w-5 text-slate-400 transition group-hover:translate-x-1 group-hover:text-primary-600" />
+                  </Link>
+                </div>
+            )}
+
+            {/* ================= LANDLORD ================= */}
+            {role === 'landlord' && (
+                <div>
+                  <div className="mb-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">
+                      Property workspace
+                    </p>
+
+                    <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+                      Manage your properties with confidence
+                    </h2>
+
+                    <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+                      Manage listings, applicants, tenants and agreements from one place.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-3">
+
+                    {/* Large property card */}
+                    <div className="lg:col-span-2">
+                      <DashboardAction
+                          to="/my-properties"
+                          icon={Building2}
+                          title="Your property portfolio"
+                          text="Create beautiful listings, upload property photos, manage availability, and keep your rental inventory organized."
+                          label="Properties"
+                          featured
+                          tone="emerald"
+                      />
+                    </div>
+
+                    {/* Applications */}
+                    <DashboardAction
+                        to="/received-applications"
+                        icon={Inbox}
+                        title="Applicant inbox"
+                        text="Review verified tenants and decide who gets access to your properties."
+                        label="Applicants"
+                        tone="amber"
+                    />
+
+                    <DashboardAction
+                        to="/rental-history"
+                        icon={KeyRound}
+                        title="Current tenants"
+                        text="Track active tenancies, completed rentals and tenant ratings."
+                        label="Tenancies"
+                        tone="primary"
+                    />
+
+                    <DashboardAction
+                        to="/properties"
+                        icon={Search}
+                        title="Market explorer"
+                        text="Compare similar listings and understand what properties are asking in your market."
+                        label="Market"
+                        tone="violet"
+                    />
+
+                    {/* Agreements */}
+                    <DashboardAction
+                        to="/agreements"
+                        icon={ScrollText}
+                        title="Agreements"
+                        text="Keep rental agreements organized and monitor documents awaiting signatures."
+                        label="Contracts"
+                        tone="emerald"
+                    />
+
+                  </div>
+
+                  {/* Landlord bottom banner */}
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50 to-teal-50 p-5 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-teal-500/10">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
+              <BadgeCheck className="h-5 w-5" />
+            </span>
+
+                        <div>
+                          <p className="text-sm font-bold text-emerald-900 dark:text-emerald-300">
+                            Build trust with every listing
+                          </p>
+
+                          <p className="text-xs text-emerald-800/70 dark:text-emerald-400/70">
+                            Keep your property information and profile complete.
+                          </p>
+                        </div>
+                      </div>
+
+                      <Link
+                          to="/profile"
+                          className="text-sm font-bold text-emerald-700 hover:underline dark:text-emerald-300"
+                      >
+                        Update profile →
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+            )}
+
+            {/* ================= ADMIN ================= */}
+            {role === 'admin' && (
+                <div>
+                  <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-600 dark:text-violet-400">
+                        Administration
+                      </p>
+
+                      <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+                        Platform control center
+                      </h2>
+
+                      <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+                        Keep VeriNest secure, trusted, and running smoothly.
+                      </p>
+                    </div>
+
+                    <div className="hidden rounded-2xl border border-violet-100 bg-violet-50 px-4 py-2 text-xs font-bold text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300 sm:block">
+                      🛡️ Admin workspace
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-3">
+
+                    {/* Main review card */}
+                    <div className="lg:col-span-2">
+                      <DashboardAction
+                          to="/admin"
+                          icon={FileText}
+                          title="Verification command center"
+                          text="Review pending documents, validate submitted information, and keep the platform's verification pipeline moving."
+                          label="Priority"
+                          featured
+                          tone="violet"
+                      />
+                    </div>
+
+                    <DashboardAction
+                        to="/admin/users"
+                        icon={Users}
+                        title="User management"
+                        text="Inspect tenant and landlord accounts, review activity, and manage account access."
+                        label="Accounts"
+                        tone="primary"
+                    />
+
+                    <DashboardAction
+                        to="/admin/trust-score"
+                        icon={ShieldCheck}
+                        title="Trust scores"
+                        text="Audit tenant trust scores and understand the verification signals behind them."
+                        label="Trust"
+                        tone="emerald"
+                    />
+
+                    <DashboardAction
+                        to="/properties"
+                        icon={Search}
+                        title="Platform listings"
+                        text="Browse the marketplace from the platform administrator's perspective."
+                        label="Marketplace"
+                        tone="amber"
+                    />
+
+                    <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-slate-900 p-6 shadow-[0_10px_30px_rgba(15,23,42,0.12)] dark:border-white/10">
+                      <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-violet-500/20 blur-3xl" />
+
+                      <div className="relative">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white">
+                          <BadgeCheck className="h-6 w-6" />
+                        </div>
+
+                        <p className="mt-6 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                          Platform health
+                        </p>
+
+                        <h3 className="mt-1 text-xl font-black text-white">
+                          Trust starts with verification
+                        </h3>
+
+                        <p className="mt-2 text-sm leading-6 text-slate-400">
+                          Keep document reviews accurate and users' information protected.
+                        </p>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+            )}
+
           </section>
         </div>
       </main>
