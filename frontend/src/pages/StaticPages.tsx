@@ -17,11 +17,6 @@ import { PhotoBand, PhotoSplit } from '../components/Imagery';
 import { photos } from '../assets/photos';
 import type { Photo } from '../assets/photos';
 
-
-/* ================================================================
-   SHARED INFO PAGE
-================================================================ */
-
 function InfoPage({
                       title,
                       lede,
@@ -98,11 +93,6 @@ function InfoPage({
         </section>
 
     ) : (
-
-        /* ============================================================
-           TEXT-ONLY HERO
-           Used for Privacy / Terms
-        ============================================================ */
         <section className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-primary-50 dark:border-white/10 dark:from-slate-950 dark:via-slate-950 dark:to-primary-950/30">
 
             <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-primary-500/10 blur-3xl" />
@@ -142,10 +132,6 @@ function InfoPage({
 
             {header}
 
-
-            {/* ==========================================================
-          CONTENT
-      =========================================================== */}
             <div
                 className={`relative mx-auto mt-10 px-4 sm:px-6 ${
                     wide
@@ -159,11 +145,6 @@ function InfoPage({
         </main>
     );
 }
-
-
-/* ================================================================
-   PREMIUM CARD
-================================================================ */
 
 function Card({
                   title,
@@ -219,11 +200,6 @@ function Card({
         </section>
     );
 }
-
-
-/* ================================================================
-   SERVICE LIST
-================================================================ */
 
 function ServiceList({
                          title,
@@ -289,11 +265,6 @@ function ServiceList({
         </div>
     );
 }
-
-
-/* ================================================================
-   ABOUT
-================================================================ */
 
 export function AboutPage() {
 
@@ -416,11 +387,6 @@ export function AboutPage() {
         </InfoPage>
     );
 }
-
-
-/* ================================================================
-   SERVICES
-================================================================ */
 
 export function ServicesPage() {
 
@@ -580,11 +546,6 @@ export function ServicesPage() {
     );
 }
 
-
-/* ================================================================
-   CONTACT
-================================================================ */
-
 export function ContactPage() {
 
     return (
@@ -720,11 +681,6 @@ export function ContactPage() {
     );
 }
 
-
-/* ================================================================
-   PRIVACY
-================================================================ */
-
 export function PrivacyPage() {
 
     return (
@@ -823,11 +779,6 @@ export function PrivacyPage() {
         </InfoPage>
     );
 }
-
-
-/* ================================================================
-   TERMS
-================================================================ */
 
 export function TermsPage() {
 
