@@ -1,32 +1,29 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VeriNest</title>
-    <script>
-      // Apply the saved (or OS-preferred) theme BEFORE first paint so the
-      // page never flashes the wrong theme.
-      (function () {
-        try {
-          var t = localStorage.getItem('verinest-theme');
-          if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-          }
-        } catch (e) { /* storage unavailable — default to light */ }
-      })();
-    </script>
+<head>
+    <meta charset="UTF-8"/>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <!-- Google AdSense — site-level verification/ad serving. VeriNest is an SPA,
          so this single head tag covers every route. -->
-    <script
-      async
-      src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9480166421241158"
-      crossorigin="anonymous"
-    ></script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+    <meta name="google-adsense-account" content="ca-pub-9480166421241158">
+    <title>VeriNest</title>
+    <script>
+        // Apply the saved (or OS-preferred) theme BEFORE first paint so the
+        // page never flashes the wrong theme.
+        (function () {
+            try {
+                var t = localStorage.getItem('verinest-theme');
+                if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                    document.documentElement.classList.add('dark');
+                }
+            } catch (e) { /* storage unavailable — default to light */
+            }
+        })();
+    </script>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
 </html>
