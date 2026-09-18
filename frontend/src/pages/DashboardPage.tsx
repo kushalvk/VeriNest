@@ -132,7 +132,7 @@ function DashboardAction({
       visual: 'from-emerald-600 via-teal-600 to-cyan-700',
       glow: 'bg-emerald-300/30',
       icon: 'bg-white/15 text-white',
-      badge: 'bg-white/15 text-white',
+      badge: 'bg-white/15 text-black dark:text-white',
     },
     amber: {
       visual: 'from-amber-500 via-orange-600 to-rose-600',
@@ -170,13 +170,13 @@ function DashboardAction({
           <div className="absolute right-16 top-16 h-16 w-16 rounded-full border border-white/10 bg-white/5" />
 
           {/* Content */}
-          <div className="relative flex h-full flex-col justify-between p-7">
+          <div className="relative flex h-full flex-col justify-between p-7 text-black dark:text-white">
             <div>
               <div className="flex items-center justify-between">
               <span
                   className={`flex h-14 w-14 items-center justify-center rounded-2xl ${theme.icon} shadow-lg backdrop-blur-md`}
               >
-                <Icon className="h-7 w-7" aria-hidden="true" />
+                <Icon className="h-7 w-7 text-black dark:text-white" aria-hidden="true" />
               </span>
 
                 {label && (
@@ -188,16 +188,16 @@ function DashboardAction({
                 )}
               </div>
 
-              <h3 className="mt-8 max-w-md text-2xl font-black tracking-tight text-white sm:text-3xl">
+              <h3 className="mt-8 max-w-md text-2xl font-black tracking-tight sm:text-3xl">
                 {title}
               </h3>
 
-              <p className="mt-3 max-w-lg text-sm leading-6 text-white/80">
+              <p className="mt-3 max-w-lg text-sm leading-6 text-black/80 dark:text-white/80">
                 {text}
               </p>
             </div>
 
-            <div className="mt-6 flex items-center gap-2 text-sm font-bold text-white">
+            <div className="mt-6 flex items-center gap-2 text-sm font-bold">
               Explore now
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 transition-all duration-300 group-hover:translate-x-1 group-hover:bg-white/25">
               <ArrowRight className="h-4 w-4" />
