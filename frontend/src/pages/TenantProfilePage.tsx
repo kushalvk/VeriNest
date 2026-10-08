@@ -13,6 +13,64 @@ const EMPLOYMENT_TYPES: EmploymentType[] = ['Full Time', 'Part Time', 'Business'
 
 const emptyAddress: Address = { addressLine1: '', addressLine2: '', city: '', state: '', pincode: '' };
 
+// ---------- Pincode helpers ----------
+/** Keep digits only, max 6 chars. */
+const sanitizePincode = (value: string) => value.replace(/\D/g, '').slice(0, 6);
+
+/** Returns an error message, or null when valid / empty (optional field). */
+const validatePincode = (value?: string): string | null => {
+  const v = (value ?? '').trim();
+  if (!v) return null; // optional; change to return 'Pincode is required' to make it mandatory
+  if (!/^\d+$/.test(v)) return 'Pincode must contain digits only';
+  if (v.length !== 6) return 'Pincode must be exactly 6 digits';
+  if (v[0] === '0') return 'Pincode cannot start with 0';
+  return null;
+};
+
+// ---------- Scroll + cursor helper ----------
+type ErrorKey = 'aadhaarNumber' | 'panNumber' | 'currentPincode' | 'permanentPincode';
+type FieldErrors = Partial<Record<ErrorKey, string>>;
+
+// Order must match the visual order on the page.
+const ERROR_ORDER: ErrorKey[] = ['aadhaarNumber', 'panNumber', 'currentPincode', 'permanentPincode'];
+
+const findErrorElement = (key: ErrorKey): HTMLInputElement | null => {
+  switch (key) {
+    case 'aadhaarNumber':
+      return document.getElementById('aadhaarNumber') as HTMLInputElement | null;
+    case 'panNumber':
+      return document.getElementById('panNumber') as HTMLInputElement | null;
+    case 'currentPincode':
+      return document.querySelector<HTMLInputElement>(
+          '#current-address-section input[id*="pincode" i], #current-address-section input[name*="pincode" i]'
+      );
+    case 'permanentPincode':
+      return document.querySelector<HTMLInputElement>(
+          '#permanent-address-section input[id*="pincode" i], #permanent-address-section input[name*="pincode" i]'
+      );
+  }
+};
+
+/** Scrolls to the first errored field and places the cursor at the end of its value. */
+const focusFirstError = (errors: FieldErrors) => {
+  const firstKey = ERROR_ORDER.find((k) => errors[k]);
+  if (!firstKey) return;
+  const el = findErrorElement(firstKey);
+  if (!el) return;
+
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Delay focus so the smooth scroll isn't interrupted
+  setTimeout(() => {
+    el.focus({ preventScroll: true });
+    try {
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    } catch {
+      /* some input types don't support selection */
+    }
+  }, 300);
+};
+
 interface FormState {
   dob: string;
   gender: '' | Gender;
@@ -86,20 +144,20 @@ const toPayload = (f: FormState): TenantProfile => {
     currentAddress: addr(f.currentAddress),
     permanentAddress: addr(f.permanentAddress),
     emergencyContact:
-      f.emergencyContact.name || f.emergencyContact.relation || f.emergencyContact.phone
-        ? {
-            name: str(f.emergencyContact.name),
-            relation: str(f.emergencyContact.relation),
-            phone: str(f.emergencyContact.phone),
-          }
-        : undefined,
+        f.emergencyContact.name || f.emergencyContact.relation || f.emergencyContact.phone
+            ? {
+              name: str(f.emergencyContact.name),
+              relation: str(f.emergencyContact.relation),
+              phone: str(f.emergencyContact.phone),
+            }
+            : undefined,
     familyMembers: f.familyMembers
-      .filter((m) => m.name.trim() || m.relation.trim() || m.age.trim())
-      .map((m) => ({
-        name: str(m.name),
-        relation: str(m.relation),
-        age: m.age.trim() ? Number(m.age) : undefined,
-      })),
+        .filter((m) => m.name.trim() || m.relation.trim() || m.age.trim())
+        .map((m) => ({
+          name: str(m.name),
+          relation: str(m.relation),
+          age: m.age.trim() ? Number(m.age) : undefined,
+        })),
   };
 };
 
@@ -109,7 +167,7 @@ const sectionTitle = 'mb-3 text-sm font-semibold uppercase tracking-wide text-in
 export default function TenantProfilePage() {
   const [mode, setMode] = useState<'loading' | 'create' | 'edit'>('loading');
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [fieldErrors, setFieldErrors] = useState<{ aadhaarNumber?: string; panNumber?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [banner, setBanner] = useState<{ tone: 'error' | 'success'; message: string } | null>(null);
   const [sameAsCurrent, setSameAsCurrent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -121,50 +179,82 @@ export default function TenantProfilePage() {
   useEffect(() => {
     let cancelled = false;
     profileApi
-      .getMyTenantProfile()
-      .then((profile) => {
-        if (cancelled) return;
-        if (profile) {
-          setForm(fromProfile(profile));
-          setMode('edit');
-        } else {
-          setMode('create');
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setMode('create');
-          setBanner({ tone: 'error', message: getApiError(err) });
-        }
-      });
+        .getMyTenantProfile()
+        .then((profile) => {
+          if (cancelled) return;
+          if (profile) {
+            setForm(fromProfile(profile));
+            setMode('edit');
+          } else {
+            setMode('create');
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setMode('create');
+            setBanner({ tone: 'error', message: getApiError(err) });
+          }
+        });
     return () => { cancelled = true; };
   }, []);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
-    setForm((f) => ({ ...f, [key]: value }));
+      setForm((f) => ({ ...f, [key]: value }));
 
-  const validate = (f: FormState) => {
-    const errors: typeof fieldErrors = {};
+  const clearError = (...keys: ErrorKey[]) =>
+      setFieldErrors((prev) => {
+        if (!keys.some((k) => prev[k])) return prev;
+        const next = { ...prev };
+        keys.forEach((k) => delete next[k]);
+        return next;
+      });
+
+  const validate = (f: FormState): FieldErrors => {
+    const errors: FieldErrors = {};
     if (f.aadhaarNumber && !AADHAAR_REGEX.test(f.aadhaarNumber)) {
       errors.aadhaarNumber = 'Aadhaar must be exactly 12 digits';
     }
     if (f.panNumber && !PAN_REGEX.test(f.panNumber)) {
       errors.panNumber = 'PAN format: AAAAA9999A (5 letters, 4 digits, 1 letter)';
     }
+    const currentPin = validatePincode(f.currentAddress.pincode);
+    if (currentPin) errors.currentPincode = currentPin;
+    const permanentPin = validatePincode(f.permanentAddress.pincode);
+    if (permanentPin) errors.permanentPincode = permanentPin;
     return errors;
+  };
+
+  const onCurrentAddressChange = (next: Address) => {
+    const clean: Address = { ...next, pincode: sanitizePincode(next.pincode ?? '') };
+    set('currentAddress', clean);
+    clearError('currentPincode');
+    if (sameAsCurrent) {
+      set('permanentAddress', { ...clean });
+      clearError('permanentPincode');
+    }
+  };
+
+  const onPermanentAddressChange = (next: Address) => {
+    const clean: Address = { ...next, pincode: sanitizePincode(next.pincode ?? '') };
+    set('permanentAddress', clean);
+    setSameAsCurrent(false);
+    clearError('permanentPincode');
   };
 
   const onSameAsCurrent = (checked: boolean) => {
     setSameAsCurrent(checked);
-    if (checked) set('permanentAddress', { ...form.currentAddress });
+    if (checked) {
+      set('permanentAddress', { ...form.currentAddress });
+      clearError('permanentPincode');
+    }
   };
 
   const addFamilyMember = () =>
-    set('familyMembers', [...form.familyMembers, { name: '', relation: '', age: '' }]);
+      set('familyMembers', [...form.familyMembers, { name: '', relation: '', age: '' }]);
   const removeFamilyMember = (index: number) =>
-    set('familyMembers', form.familyMembers.filter((_, i) => i !== index));
+      set('familyMembers', form.familyMembers.filter((_, i) => i !== index));
   const setFamilyMember = (index: number, key: 'name' | 'relation' | 'age', value: string) =>
-    set('familyMembers', form.familyMembers.map((m, i) => (i === index ? { ...m, [key]: value } : m)));
+      set('familyMembers', form.familyMembers.map((m, i) => (i === index ? { ...m, [key]: value } : m)));
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -173,7 +263,10 @@ export default function TenantProfilePage() {
 
     const errors = validate(form);
     setFieldErrors(errors);
-    if (Object.keys(errors).length) return;
+    if (Object.keys(errors).length) {
+      focusFirstError(errors); // scroll + cursor to the first invalid field
+      return;
+    }
 
     submitLock.current = true;
     setSubmitting(true);
@@ -187,10 +280,20 @@ export default function TenantProfilePage() {
     } catch (err) {
       // Map backend field validation back onto the field when possible.
       const message = getApiError(err);
-      if (/aadhaar/i.test(message)) setFieldErrors({ aadhaarNumber: message });
-      else if (/PAN/i.test(message)) setFieldErrors({ panNumber: message });
+      let mapped: FieldErrors | null = null;
+      if (/aadhaar/i.test(message)) mapped = { aadhaarNumber: message };
+      else if (/PAN/i.test(message)) mapped = { panNumber: message };
+      else if (/pincode|pin code/i.test(message)) {
+        mapped = /permanent/i.test(message) ? { permanentPincode: message } : { currentPincode: message };
+      }
+
       setBanner({ tone: 'error', message });
-      window.scrollTo({ top: 0 });
+      if (mapped) {
+        setFieldErrors(mapped);
+        focusFirstError(mapped);
+      } else {
+        window.scrollTo({ top: 0 });
+      }
     } finally {
       submitLock.current = false;
       setSubmitting(false);
@@ -202,175 +305,180 @@ export default function TenantProfilePage() {
   }
 
   return (
-    <main className="pb-16">
-      <form onSubmit={onSubmit} noValidate className="mx-auto mt-8 max-w-3xl space-y-6 px-4">
-        <div>
-          <h1 className="text-2xl font-bold text-ink" data-testid="profile-title">
-            {mode === 'create' ? 'Complete your tenant profile' : 'Edit your tenant profile'}
-          </h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            A complete profile is required before applying to properties.
-          </p>
-        </div>
-
-        {banner && <FormAlert tone={banner.tone} message={banner.message} />}
-
-        <section className={sectionClass}>
-          <h2 className={sectionTitle}>Personal details</h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="dob" className={labelClass}>Date of birth</label>
-              <input id="dob" type="date" className={inputClass} value={form.dob}
-                onChange={(e) => set('dob', e.target.value)} />
-            </div>
-            <div>
-              <label htmlFor="gender" className={labelClass}>Gender</label>
-              <select id="gender" className={inputClass} value={form.gender}
-                onChange={(e) => set('gender', e.target.value as FormState['gender'])}>
-                <option value="">Select…</option>
-                {GENDERS.map((g) => <option key={g} value={g}>{g}</option>)}
-              </select>
-            </div>
+      <main className="pb-16">
+        <form onSubmit={onSubmit} noValidate className="mx-auto mt-8 max-w-3xl space-y-6 px-4">
+          <div>
+            <h1 className="text-2xl font-bold text-ink" data-testid="profile-title">
+              {mode === 'create' ? 'Complete your tenant profile' : 'Edit your tenant profile'}
+            </h1>
+            <p className="mt-1 text-sm text-ink-muted">
+              A complete profile is required before applying to properties.
+            </p>
           </div>
-        </section>
 
-        <section className={sectionClass}>
-          <h2 className={sectionTitle}>Employment</h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="occupation" className={labelClass}>Occupation</label>
-              <input id="occupation" className={inputClass} value={form.occupation}
-                onChange={(e) => set('occupation', e.target.value)} />
-            </div>
-            <div>
-              <label htmlFor="employmentType" className={labelClass}>Employment type</label>
-              <select id="employmentType" className={inputClass} value={form.employmentType}
-                onChange={(e) => set('employmentType', e.target.value as FormState['employmentType'])}>
-                <option value="">Select…</option>
-                {EMPLOYMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="companyName" className={labelClass}>Company name</label>
-              <input id="companyName" className={inputClass} value={form.companyName}
-                onChange={(e) => set('companyName', e.target.value)} />
-            </div>
-            <div>
-              <label htmlFor="designation" className={labelClass}>Designation</label>
-              <input id="designation" className={inputClass} value={form.designation}
-                onChange={(e) => set('designation', e.target.value)} />
-            </div>
-            <div>
-              <label htmlFor="monthlySalary" className={labelClass}>Monthly salary (Rs.)</label>
-              <input id="monthlySalary" type="number" min="0" className={inputClass} value={form.monthlySalary}
-                onChange={(e) => set('monthlySalary', e.target.value)} />
-            </div>
-          </div>
-        </section>
+          {banner && <FormAlert tone={banner.tone} message={banner.message} />}
 
-        <section className={sectionClass}>
-          <h2 className={sectionTitle}>Identity documents</h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="aadhaarNumber" className={labelClass}>Aadhaar number</label>
-              <input id="aadhaarNumber" inputMode="numeric" maxLength={12} className={inputClass}
-                value={form.aadhaarNumber}
-                onChange={(e) => set('aadhaarNumber', e.target.value.replace(/\D/g, ''))} />
-              <FieldError message={fieldErrors.aadhaarNumber} />
-            </div>
-            <div>
-              <label htmlFor="panNumber" className={labelClass}>PAN number</label>
-              <input id="panNumber" maxLength={10} className={`${inputClass} uppercase`}
-                value={form.panNumber}
-                onChange={(e) => set('panNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} />
-              <FieldError message={fieldErrors.panNumber} />
-            </div>
-            <div>
-              <label htmlFor="passportNumber" className={labelClass}>Passport number (optional)</label>
-              <input id="passportNumber" className={inputClass} value={form.passportNumber}
-                onChange={(e) => set('passportNumber', e.target.value.toUpperCase())} />
-            </div>
-          </div>
-        </section>
-
-        <section className={sectionClass}>
-          <h2 className={sectionTitle}>Current address</h2>
-          <AddressFields idPrefix="current" value={form.currentAddress}
-            onChange={(next) => {
-              set('currentAddress', next);
-              if (sameAsCurrent) set('permanentAddress', { ...next });
-            }} />
-        </section>
-
-        <section className={sectionClass}>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className={`${sectionTitle} mb-0`}>Permanent address</h2>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-muted">
-              <input type="checkbox" id="sameAsCurrent" checked={sameAsCurrent}
-                onChange={(e) => onSameAsCurrent(e.target.checked)}
-                className="h-4 w-4 rounded border-line-strong text-primary-600" />
-              Same as current address
-            </label>
-          </div>
-          <AddressFields idPrefix="permanent" value={form.permanentAddress}
-            onChange={(next) => { set('permanentAddress', next); setSameAsCurrent(false); }} />
-        </section>
-
-        <section className={sectionClass}>
-          <h2 className={sectionTitle}>Emergency contact</h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {(['name', 'relation', 'phone'] as const).map((key) => (
-              <div key={key}>
-                <label htmlFor={`emergency-${key}`} className={`${labelClass} capitalize`}>{key}</label>
-                <input id={`emergency-${key}`} className={inputClass} value={form.emergencyContact[key]}
-                  onChange={(e) => set('emergencyContact', { ...form.emergencyContact, [key]: e.target.value })} />
+          <section className={sectionClass}>
+            <h2 className={sectionTitle}>Personal details</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="dob" className={labelClass}>Date of birth</label>
+                <input id="dob" type="date" className={inputClass} value={form.dob}
+                       onChange={(e) => set('dob', e.target.value)} />
               </div>
-            ))}
-          </div>
-        </section>
-
-        <section className={sectionClass}>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className={`${sectionTitle} mb-0`}>Family members (optional)</h2>
-            <button type="button" onClick={addFamilyMember} data-testid="add-family-member"
-              className="rounded-md border border-primary-300 px-3 py-1 text-sm font-medium text-primary-700 hover:bg-primary-50">
-              + Add member
-            </button>
-          </div>
-          {form.familyMembers.length === 0 && (
-            <p className="text-sm text-ink-faint">No family members added.</p>
-          )}
-          <div className="space-y-3">
-            {form.familyMembers.map((member, i) => (
-              <div key={i} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_1fr_100px_auto]" data-testid="family-member-row">
-                <div>
-                  <label className={labelClass} htmlFor={`fm-name-${i}`}>Name</label>
-                  <input id={`fm-name-${i}`} className={inputClass} value={member.name}
-                    onChange={(e) => setFamilyMember(i, 'name', e.target.value)} />
-                </div>
-                <div>
-                  <label className={labelClass} htmlFor={`fm-relation-${i}`}>Relation</label>
-                  <input id={`fm-relation-${i}`} className={inputClass} value={member.relation}
-                    onChange={(e) => setFamilyMember(i, 'relation', e.target.value)} />
-                </div>
-                <div>
-                  <label className={labelClass} htmlFor={`fm-age-${i}`}>Age</label>
-                  <input id={`fm-age-${i}`} type="number" min="0" className={inputClass} value={member.age}
-                    onChange={(e) => setFamilyMember(i, 'age', e.target.value)} />
-                </div>
-                <button type="button" onClick={() => removeFamilyMember(i)}
-                  className="rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
-                  Remove
-                </button>
+              <div>
+                <label htmlFor="gender" className={labelClass}>Gender</label>
+                <select id="gender" className={inputClass} value={form.gender}
+                        onChange={(e) => set('gender', e.target.value as FormState['gender'])}>
+                  <option value="">Select…</option>
+                  {GENDERS.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
               </div>
-            ))}
-          </div>
-        </section>
+            </div>
+          </section>
 
-        <button type="submit" className={buttonClass} disabled={submitting}>
-          {submitting ? 'Saving…' : mode === 'create' ? 'Create profile' : 'Save changes'}
-        </button>
-      </form>
-    </main>
+          <section className={sectionClass}>
+            <h2 className={sectionTitle}>Employment</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="occupation" className={labelClass}>Occupation</label>
+                <input id="occupation" className={inputClass} value={form.occupation}
+                       onChange={(e) => set('occupation', e.target.value)} />
+              </div>
+              <div>
+                <label htmlFor="employmentType" className={labelClass}>Employment type</label>
+                <select id="employmentType" className={inputClass} value={form.employmentType}
+                        onChange={(e) => set('employmentType', e.target.value as FormState['employmentType'])}>
+                  <option value="">Select…</option>
+                  {EMPLOYMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="companyName" className={labelClass}>Company name</label>
+                <input id="companyName" className={inputClass} value={form.companyName}
+                       onChange={(e) => set('companyName', e.target.value)} />
+              </div>
+              <div>
+                <label htmlFor="designation" className={labelClass}>Designation</label>
+                <input id="designation" className={inputClass} value={form.designation}
+                       onChange={(e) => set('designation', e.target.value)} />
+              </div>
+              <div>
+                <label htmlFor="monthlySalary" className={labelClass}>Monthly salary (Rs.)</label>
+                <input id="monthlySalary" type="number" min="0" className={inputClass} value={form.monthlySalary}
+                       onChange={(e) => set('monthlySalary', e.target.value)} />
+              </div>
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <h2 className={sectionTitle}>Identity documents</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="aadhaarNumber" className={labelClass}>Aadhaar number</label>
+                <input id="aadhaarNumber" inputMode="numeric" maxLength={12} className={inputClass}
+                       value={form.aadhaarNumber}
+                       onChange={(e) => {
+                         set('aadhaarNumber', e.target.value.replace(/\D/g, ''));
+                         clearError('aadhaarNumber');
+                       }} />
+                <FieldError message={fieldErrors.aadhaarNumber} />
+              </div>
+              <div>
+                <label htmlFor="panNumber" className={labelClass}>PAN number</label>
+                <input id="panNumber" maxLength={10} className={`${inputClass} uppercase`}
+                       value={form.panNumber}
+                       onChange={(e) => {
+                         set('panNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+                         clearError('panNumber');
+                       }} />
+                <FieldError message={fieldErrors.panNumber} />
+              </div>
+              <div>
+                <label htmlFor="passportNumber" className={labelClass}>Passport number (optional)</label>
+                <input id="passportNumber" className={inputClass} value={form.passportNumber}
+                       onChange={(e) => set('passportNumber', e.target.value.toUpperCase())} />
+              </div>
+            </div>
+          </section>
+
+          <section className={sectionClass} id="current-address-section">
+            <h2 className={sectionTitle}>Current address</h2>
+            <AddressFields idPrefix="current" value={form.currentAddress}
+                           onChange={onCurrentAddressChange} />
+            <FieldError message={fieldErrors.currentPincode} />
+          </section>
+
+          <section className={sectionClass} id="permanent-address-section">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className={`${sectionTitle} mb-0`}>Permanent address</h2>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-muted">
+                <input type="checkbox" id="sameAsCurrent" checked={sameAsCurrent}
+                       onChange={(e) => onSameAsCurrent(e.target.checked)}
+                       className="h-4 w-4 rounded border-line-strong text-primary-600" />
+                Same as current address
+              </label>
+            </div>
+            <AddressFields idPrefix="permanent" value={form.permanentAddress}
+                           onChange={onPermanentAddressChange} />
+            <FieldError message={fieldErrors.permanentPincode} />
+          </section>
+
+          <section className={sectionClass}>
+            <h2 className={sectionTitle}>Emergency contact</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {(['name', 'relation', 'phone'] as const).map((key) => (
+                  <div key={key}>
+                    <label htmlFor={`emergency-${key}`} className={`${labelClass} capitalize`}>{key}</label>
+                    <input id={`emergency-${key}`} className={inputClass} value={form.emergencyContact[key]}
+                           onChange={(e) => set('emergencyContact', { ...form.emergencyContact, [key]: e.target.value })} />
+                  </div>
+              ))}
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className={`${sectionTitle} mb-0`}>Family members (optional)</h2>
+              <button type="button" onClick={addFamilyMember} data-testid="add-family-member"
+                      className="rounded-md border border-primary-300 px-3 py-1 text-sm font-medium text-primary-700 hover:bg-primary-50">
+                + Add member
+              </button>
+            </div>
+            {form.familyMembers.length === 0 && (
+                <p className="text-sm text-ink-faint">No family members added.</p>
+            )}
+            <div className="space-y-3">
+              {form.familyMembers.map((member, i) => (
+                  <div key={i} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_1fr_100px_auto]" data-testid="family-member-row">
+                    <div>
+                      <label className={labelClass} htmlFor={`fm-name-${i}`}>Name</label>
+                      <input id={`fm-name-${i}`} className={inputClass} value={member.name}
+                             onChange={(e) => setFamilyMember(i, 'name', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClass} htmlFor={`fm-relation-${i}`}>Relation</label>
+                      <input id={`fm-relation-${i}`} className={inputClass} value={member.relation}
+                             onChange={(e) => setFamilyMember(i, 'relation', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelClass} htmlFor={`fm-age-${i}`}>Age</label>
+                      <input id={`fm-age-${i}`} type="number" min="0" className={inputClass} value={member.age}
+                             onChange={(e) => setFamilyMember(i, 'age', e.target.value)} />
+                    </div>
+                    <button type="button" onClick={() => removeFamilyMember(i)}
+                            className="rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                      Remove
+                    </button>
+                  </div>
+              ))}
+            </div>
+          </section>
+
+          <button type="submit" className={buttonClass} disabled={submitting}>
+            {submitting ? 'Saving…' : mode === 'create' ? 'Create profile' : 'Save changes'}
+          </button>
+        </form>
+      </main>
   );
 }
