@@ -29,7 +29,7 @@ npx jest src/services/__tests__/trustScoreService.test.js   # single test file
 npx jest -t "name substring"                                # single test by name
 ```
 
-`npm test` is `jest src`, so the E2E tests under `tests/` are NOT part of it — run them explicitly. Each E2E test connects to its own dedicated throwaway database (`tenant-verification-smoke-test` / `-google-test` / `-admin-users-test` / `-demo-test`), drops it before/after, and mocks external boundaries (`emailService.sendEmail`, `googleAuthService.verifyGoogleToken`) — they never touch the dev DB, SMTP, or Google. The smoke test chains every feature in order (register → OTP → profile → property → document → OCR → admin approval → trust score → application → verification request → token access), so it's the best regression check after cross-cutting changes.
+`npm test` is `jest src`, so the E2E tests under `tests/` are NOT part of it — run them explicitly. Each E2E test connects to its own dedicated throwaway database (`tenant-verification-smoke-test` / `-google-test` / `-admin-users-test` / `-demo-test`), drops it before/after, and mocks external boundaries (`emailService.sendEmail`, `googleAuthService.verifyGoogleToken`) — they never touch the dev DB, SMTP, or Google. The smoke test chains every feature in order (register → OTP → profile → property → document → OCR → admin approval → trust score → application → verification request → token access), so it's the best regression check after cross-cutting changes. **There is no automated coverage yet for the agreement end/rating lifecycle** — verify it manually (see "Agreement lifecycle" below) and extend the smoke test if you touch it.
 
 ### Frontend (`cd frontend`)
 
@@ -49,7 +49,7 @@ Copy `backend/.env.example` → `backend/.env` and `frontend/.env.example` → `
 
 ### Backend layering
 
-Strict `routes → controllers → services → models` flow, all mounted in `src/app.js` under an `/api` router (`server.js` is just dotenv + DB connect + listen). `middlewares/errorHandler.js` must stay the last `app.use`. Cross-cutting concerns live in services (`auditService`, `notificationService`, `emailService`) and are called from controllers/other services rather than middleware.
+Strict `routes → controllers → services → models` flow, all mounted in `src/app.js` under an `/api` router. `server.js` is dotenv + DB connect (with retry) + listen, and **starts the hourly auto-end-agreements job once the DB is connected** (`startAutoEndJob`; `setInterval`, `unref`'d). The serverless entry (`api/index.js`) does not run that job. `middlewares/errorHandler.js` must stay the last `app.use`. Cross-cutting concerns live in services (`auditService`, `notificationService`, `emailService`, `rentalRecordService`) and are called from controllers/other services rather than middleware.
 
 **Express 5 gotcha:** `req.query` is a getter, so `express-mongo-sanitize` is applied manually per-object in `app.js` (sanitize in place) — do not switch to `app.use(mongoSanitize())`, it throws.
 
@@ -85,17 +85,58 @@ The public property search (`searchProperties`) excludes listings owned by the d
 
 `computeTrustScore` in `services/trustScoreService.js` is pure and deterministic (no DB access) so it can be unit-tested with plain objects — keep it that way; DB fetching lives in the callers. Every score change is recorded in `TrustScoreHistory` with human-readable reasons. Recalculation triggers: admin verifies a document, a landlord rates the tenant, or an admin forces one via `/api/trust-score/recalculate/:tenantId`.
 
-### Agreements & rental history
+### Agreements & signing
 
-Landlord creates an agreement from an accepted application → `agreementPdfService` generates the PDF (pdf-lib) and uploads it to Cloudinary. Signing is identity-based only: the backend matches the caller's user id against the agreement's `tenantId`/`landlordId` to pick the signature slot (a role claim can't forge it); double-signing returns 409. When the second signature lands, the agreement flips to `active` and a `RentalHistory` record is auto-created — that's the only way one is created. Ratings are two-way (tenant↔landlord) with direction derived from the caller's identity, but only landlord→tenant ratings feed the trust score.
+Landlord creates an agreement from an accepted application → `agreementPdfService` generates the PDF (pdf-lib) and uploads it to Cloudinary. Signing is identity-based only: the backend matches the caller's user id against the agreement's `tenantId`/`landlordId` to pick the signature slot (a role claim can't forge it); double-signing returns 409. When the second signature lands, the agreement flips to `active`, `signedAt` is stamped, a `RentalHistory` record is created (`rentalHistoryController.createRentalRecord`), and the property goes `occupied`.
+
+The `Agreement` model (`models/Agreement.js`) owns the lifecycle vocabulary — use its helpers instead of hand-setting fields:
+
+- `status`: `draft` → `active` ⇄ `end_requested` → `completed` | `terminated` (the old `ended` value no longer exists).
+- Flags/timestamps: `tenantSigned`, `landlordSigned`, `tenantSignedAt`, `landlordSignedAt`, `signedAt` (= activation time). There is no `signatures` object and no `activatedAt`.
+- `endRequests[]` (sub-schema): `requestedBy`, `requestedByRole`, `reason`, `status` (`pending|approved|rejected|cancelled`), `requestedAt`, `respondedAt`, `responseNote`. History is kept; only a `pending` entry is "live".
+- `endType`: `natural` | `early_approved`; `endedAt`; `tenantRated` / `landlordRated`.
+- Methods/virtuals: `getRoleOf(userId)` → `'tenant' | 'landlord' | null`, `signAs(role)` (sets flag + time, activates when both signed), `finalize(endType)` (`natural` → `completed`, `early_approved` → `terminated`, sets `endedAt`), virtuals `pendingEndRequest`, `isEnded`, `isFullySigned`.
+
+### Agreement lifecycle (ending a tenancy)
+
+Backend: `agreementLifecycleController` (routes in `agreementRoutes.js`, all behind `authMiddleware`; party checks are by identity in the controller). Endpoints:
+
+- `GET /agreements/mine/lifecycle` — enriched list for the Agreements page. Per agreement it returns `myRole`, `counterparty`, `endRequests` summary and **server-computed action flags**: `canInitiateEnd`, `isEarlyEnd`, `canRespondEndRequest`, `canCancelEndRequest`, `canRate`, `iRated`, `myRating`. The frontend must not re-derive these rules.
+- `PATCH /agreements/:id/end` — after `endDate`: `finalize('natural')` immediately; before it: requires `reason` (≥ 5 chars), pushes an end request, sets `end_requested`, emails the other party. 409 if one is already pending.
+- `PATCH /agreements/:id/end/respond` `{ action: approve|reject }` — only the party who did **not** raise the pending request may respond. Approve → `finalize('early_approved')` (`terminated`); reject → back to `active`.
+- `PATCH /agreements/:id/cancel-end-request` — only the requester; back to `active`.
+- `POST /agreements/:id/rate` — handled by `agreementRatingController` (see below).
+
+Route-order rule: `/mine` and `/mine/lifecycle` must stay registered **before** `/:id`. A duplicate or dangling `/:id/rate` line (pointing at a function that no longer exists) crashes boot — keep exactly one.
+
+**When an agreement ends** (natural end, approved early end, the auto-end job): call `rentalRecordService.syncRentalRecord(agreement)`. It is idempotent and never throws: upserts the `RentalHistory` record (`agreementId` is unique), sets `moveOutDate` (the `endDate` for natural ends, else `endedAt`), and flips the property `occupied → available` unless another `active`/`end_requested` agreement still holds it. `backfillRecordsForUser(userId)` runs at the start of `GET /rental-history/mine` and repairs any active/ended agreement missing its record or `moveOutDate`.
+
+**Auto-end job** (`src/cron/autoEndAgreements.js`, started from `server.js`): finds `active`/`end_requested` agreements with `endDate <= now` and both parties signed, claims each with an atomic `findOneAndUpdate` (status → `completed`, `endType: natural`), cancels any pending end request via `arrayFilters`, calls `syncRentalRecord`, and notifies both parties. It is best-effort and logs `[cron] …`.
+
+### Rental history & ratings
+
+Ratings are **embedded in `RentalHistory`**, not a separate collection: `tenantRating`/`tenantReview` = what the landlord said about the tenant; `landlordRating`/`landlordReview` = what the tenant said about the landlord. Direction always comes from the caller's identity; one rating per side; only after the rental ended (`moveOutDate` set / agreement `completed`|`terminated`); duplicates → 409. Only landlord→tenant ratings call `trustScoreService.recalculateAndPersist(tenantId, 'System')` (wrapped, failures logged). The rated party gets a `ratingReceived` notification.
+
+Two entry points write the same fields — never call both for one rental:
+
+- `POST /agreements/:id/rate` (`agreementRatingController.rateAgreement`) — used by the Agreements page popup. Its `ensureRecord` creates/completes the `RentalHistory` row on demand, then sets the rating, mirrors `tenantRated`/`landlordRated` on the agreement, and returns the real error message if record creation fails.
+- `PATCH /rental-history/:id/rate` (`rentalHistoryController.submitRating`) — used by the Rental history page's rating form; requires `moveOutDate`.
+
+`PATCH /rental-history/:id/complete` is landlord-only and **refuses (409) while the agreement is still `active`/`end_requested` and before its `endDate`** — early endings must go through the Agreements page so the other party's approval can't be bypassed. When allowed it sets `moveOutDate`, marks the agreement `completed` (`endType: natural`), cancels pending end requests, and relists the property.
+
+Legacy: a standalone `Rating` model / `ratingController` / `User.ratingAvg` aggregate from an earlier design may still exist in the repo but is **not part of the live flow** — don't build on it; the trust score reads ratings from `RentalHistory`.
 
 ### Notifications & emails
 
-`notificationService.createNotification()` is the single entry point: it always writes a `Notification` record (powers the header bell, 30s polling), and for `type: "email"` additionally sends through `emailService` using the branded HTML templates in `src/emails/templates.js` (all share the inline-CSS shell in `baseTemplate.js`; emails never carry sensitive payloads — CTAs link back via `FRONTEND_URL`). When SMTP is unconfigured outside production, emails log to console as `[DEV EMAIL]` instead of throwing; side effects (notifications, emails, audit logs, score recalcs) are wrapped so their failure never breaks the primary API action.
+`notificationService.createNotification()` is the single entry point: it always writes a `Notification` record (powers the header bell, 30s polling), and for `type: "email"` additionally sends through `emailService` using the branded HTML templates in `src/emails/templates.js` (all share the inline-CSS shell in `baseTemplate.js`; emails never carry sensitive payloads — CTAs link back via `FRONTEND_URL`). Lifecycle templates include `agreementEndRequested`, `agreementEnded` and `ratingReceived`; a controller referencing a `templateName` that doesn't exist in `templates.js` will fail to render its email, so add the template when adding a new notification. When SMTP is unconfigured outside production, emails log to console as `[DEV EMAIL]` instead of throwing; side effects (notifications, emails, audit logs, score recalcs, rental-record sync) are wrapped so their failure never breaks the primary API action.
+
+**Import-shape gotcha:** `notificationService` is imported inconsistently in the codebase (`{ notificationService }` vs the module itself). New code should use `const mod = require('../services/notificationService'); const notificationService = mod.notificationService || mod;`, and a wrongly-shaped import fails silently because callers wrap it in try/catch.
 
 ### Frontend routing
 
 All routes are declared in `src/App.tsx`. A single site-wide `AppShell` (header, footer, notification bell, chat widget) wraps every route — public and authenticated alike. Authenticated pages nest under the `RequireAuth` outlet; role-specific pages wrap in `RequireRole`. Public pages include property search/detail and `/verify/:token`. API calls go through per-domain modules in `src/api/` which all use the shared `client.ts`; use `getApiError(err)` for user-facing error messages.
+
+`pages/ActiveAgreementsPage.tsx` is the shared tenant+landlord **Agreements page** (tabs: Active / End requests / Ended). It renders only what `listMyAgreementsLifecycle()` returns and the action flags in it, runs end/approve/reject/cancel through one `runAction` helper (notice banner + silent reload), and hosts the end-agreement and rating popups inline. Ended agreements show **Rate tenant/landlord** (`canRate`) or **Already rated ★** (`iRated` + `myRating`). `pages/RentalHistoryPage.tsx` shows both ratings per record, keeps its own rating form, and handles a `?rate=<agreementId>` deep link (find the record by `agreementId`, open the form, or show "already rated"). The frontend `RentalRecord` type carries `agreementId: string`; the page's `getAgreementId()` helper also tolerates a populated `{ _id }`. When adding fields to the lifecycle response, update `LifecycleAgreement` in `src/api/agreementApi.ts` too.
 
 ### Frontend imagery
 
@@ -120,3 +161,14 @@ Cloudinary (file storage), Gemini via `@google/genai` (`geminiService` — chat 
 - Backend is CommonJS (`require`/`module.exports`); frontend is ESM TypeScript. Don't mix.
 - Backend error responses use the shape `{ error: "message" }` — the frontend's `getApiError` depends on it.
 - Audit-worthy actions (admin decisions, verification events) should write through `auditService`.
+- Authorization is by **identity** (compare `req.user.id` to the record's `tenantId`/`landlordId`), never by a client-supplied role or direction. Use `agreement.getRoleOf(req.user.id)`.
+- Use the `Agreement` helpers (`signAs`, `finalize`) for status changes; don't set `status`/`endType`/`endedAt` by hand in new code, and use `syncRentalRecord` rather than creating `RentalHistory` rows ad hoc.
+- Don't call `.save()` on `.lean()` results; for concurrent transitions (end/auto-end) use atomic `findOneAndUpdate` with a status guard.
+- Mongoose `pre('validate')` hooks should throw synchronously rather than rely on a `next` callback (works across Mongoose versions).
+
+## Gotchas
+
+- **Stale unique indexes.** Mongoose never drops indexes when a schema changes. A leftover unique index from an old field name (e.g. `agreement_1` on `rentalhistories`) makes every new insert fail with `E11000 … dup key: { agreement: null }` once one document holds `null`. When renaming fields, drop the old index (`db.<collection>.dropIndex('<name>')`). `rentalhistories` should have exactly `_id_`, `tenantId_1`, `landlordId_1`, `agreementId_1` (unique). Don't swallow `E11000` blindly in create paths — confirm the document actually exists first (as `syncRentalRecord` does).
+- **Old data shapes.** Records created before the lifecycle feature may use status `ended`, `signatures`/`activatedAt`, or end requests with `requester`/`target`. Migrate them before saving through the new schema (enum validation fails otherwise).
+- **Collection names** (for mongosh): `agreements`, `rentalhistories`, `properties`, `users`, `notifications` (Mongoose pluralizes lowercase model names).
+- **Auto-end job on Vercel.** It is a `setInterval` in `server.js`, so it only runs on a long-lived Node process; on serverless the manual End button (allowed after `endDate`) is the path.

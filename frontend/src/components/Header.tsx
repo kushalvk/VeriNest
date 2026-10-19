@@ -33,12 +33,14 @@ const roleLinks: Record<Role, NavItem[]> = {
     { to: '/my-applications', label: 'My Applications' },
     { to: '/verification-requests', label: 'Verifications' },
     { to: '/rental-history', label: 'Rentals' },
+    { to: '/agreements', label: 'Agreements' },
   ],
   landlord: [
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/my-properties', label: 'My Properties' },
     { to: '/received-applications', label: 'Applications' },
     { to: '/rental-history', label: 'Rentals' },
+    { to: '/agreements', label: 'Agreements' },
   ],
   admin: [
     { to: '/dashboard', label: 'Dashboard' },

@@ -5,12 +5,12 @@ const RentalHistory = require('../models/RentalHistory');
 const User = require('../models/User');
 const notificationService = require('../services/notificationService');
 const trustScoreService = require('../services/trustScoreService');
+const { backfillRecordsForUser } = require('../services/rentalRecordService');
 
 /**
  * INTERNAL — not a route. Called when an Agreement flips to "active"
- * (both parties signed). This is the ONLY way rental records come into
- * existence; there is deliberately no client-facing create endpoint.
- * agreementId is unique, so a double trigger cannot create duplicates.
+ * (both parties signed). agreementId is unique, so a double trigger
+ * cannot create duplicates.
  */
 const createRentalRecord = async (agreement) => {
   try {
@@ -45,8 +45,8 @@ const loadRecordForParty = async (id, userId) => {
 };
 
 // PATCH /api/rental-history/:id/complete  body: { moveOutDate }
-// Landlord-only: completing the tenancy is what puts the property back on
-// the market, so the decision belongs to the property owner.
+// Landlord-only. Only allowed once the agreement has reached its end date;
+// ending earlier must go through the Agreements page (needs the other party's approval).
 const completeRental = async (req, res, next) => {
   try {
     const { record, party, status } = await loadRecordForParty(req.params.id, req.user.id);
@@ -66,21 +66,39 @@ const completeRental = async (req, res, next) => {
       return res.status(422).json({ error: 'A valid moveOutDate is required' });
     }
 
+    const agreement = await Agreement.findById(record.agreementId).select('status endDate');
+    if (
+        agreement &&
+        ['active', 'end_requested'].includes(agreement.status) &&
+        new Date() < agreement.endDate
+    ) {
+      return res.status(409).json({
+        error:
+            'This agreement has not reached its end date. To end it early, use the Agreements page — the tenant must approve.',
+      });
+    }
+
     record.moveOutDate = moveOutDate;
     await record.save();
 
     // Tenancy is over: close the agreement and relist the property.
     // Best-effort — the rental record is already saved; failures are logged.
     try {
+      const now = new Date();
       await Agreement.updateOne(
-        { _id: record.agreementId, status: 'active' },
-        { $set: { status: 'completed' } }
+          { _id: record.agreementId, status: { $in: ['active', 'end_requested'] } },
+          { $set: { status: 'completed', endType: 'natural', endedAt: now } }
+      );
+      await Agreement.updateOne(
+          { _id: record.agreementId, 'endRequests.status': 'pending' },
+          { $set: { 'endRequests.$[p].status': 'cancelled', 'endRequests.$[p].respondedAt': now } },
+          { arrayFilters: [{ 'p.status': 'pending' }] }
       );
       // Only flip occupied → available; never resurrect a soft-deleted
       // ('inactive') listing.
       await Property.updateOne(
-        { _id: record.propertyId, status: 'occupied' },
-        { $set: { status: 'available' } }
+          { _id: record.propertyId, status: 'occupied' },
+          { $set: { status: 'available' } }
       );
     } catch (err) {
       console.error(`[rental-history] Post-completion bookkeeping failed: ${err.message}`);
@@ -107,8 +125,17 @@ const submitRating = async (req, res, next) => {
       return res.status(422).json({ error: 'rating must be an integer from 1 to 5' });
     }
 
+    if (!record.moveOutDate) {
+      return res.status(400).json({ error: 'You can rate only after the rental has ended' });
+    }
+
     // Direction is fixed by the caller's identity, never by the client:
     // the tenant rates the LANDLORD; the landlord rates the TENANT.
+    const alreadyRated = party === 'tenant' ? record.landlordRating != null : record.tenantRating != null;
+    if (alreadyRated) {
+      return res.status(409).json({ error: 'You have already rated this rental' });
+    }
+
     if (party === 'tenant') {
       record.landlordRating = rating;
       if (review !== undefined) record.landlordReview = String(review);
@@ -158,15 +185,18 @@ const getMyRentalHistory = async (req, res, next) => {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
 
+    // Make sure every active/ended agreement has its record (covers old data)
+    await backfillRecordsForUser(req.user.id);
+
     const filter = {
       $or: [{ tenantId: req.user.id }, { landlordId: req.user.id }],
     };
     const [records, total] = await Promise.all([
       RentalHistory.find(filter)
-        .sort({ createdAt: -1, _id: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .populate('propertyId', 'title address.city'),
+          .sort({ createdAt: -1, _id: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .populate('propertyId', 'title address.city'),
       RentalHistory.countDocuments(filter),
     ]);
 

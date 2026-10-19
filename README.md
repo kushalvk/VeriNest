@@ -10,8 +10,8 @@ the entire rental journey: tenants build a **verified profile once** (identity/i
 documents checked through an OCR-assisted review pipeline) and share it with landlords
 **on their own terms** through secure, expiring access links. Landlords see an
 **explainable trust score** instead of a stack of unverifiable paperwork, and the whole
-flow — application → verification → agreement signing → post-tenancy ratings — happens
-in one place.
+flow — application → verification → agreement signing → active tenancy → agreement end →
+post-tenancy ratings — happens in one place.
 
 ---
 
@@ -23,22 +23,24 @@ in one place.
 4. [Architecture](#architecture)
 5. [The rental lifecycle (how it all connects)](#the-rental-lifecycle)
 6. [Core concepts](#core-concepts)
-   - [Authentication & sessions](#1-authentication--sessions)
-   - [Roles](#2-roles)
-   - [Document verification pipeline](#3-document-verification-pipeline)
-   - [Trust score](#4-trust-score)
-   - [Secure document sharing](#5-secure-document-sharing-verification-requests)
-   - [Rental agreements & digital signatures](#6-rental-agreements--digital-signatures)
-   - [Rental history & two-way ratings](#7-rental-history--two-way-ratings)
-   - [Notifications & branded emails](#8-notifications--branded-emails)
-   - [AI chat assistant](#9-ai-chat-assistant)
-   - [Demo accounts](#10-demo-accounts)
+    - [Authentication & sessions](#1-authentication--sessions)
+    - [Roles](#2-roles)
+    - [Document verification pipeline](#3-document-verification-pipeline)
+    - [Trust score](#4-trust-score)
+    - [Secure document sharing](#5-secure-document-sharing-verification-requests)
+    - [Rental agreements & digital signatures](#6-rental-agreements--digital-signatures)
+    - [Agreement lifecycle: ending a tenancy](#7-agreement-lifecycle-ending-a-tenancy)
+    - [Rental history & two-way ratings](#8-rental-history--two-way-ratings)
+    - [Notifications & branded emails](#9-notifications--branded-emails)
+    - [AI chat assistant](#10-ai-chat-assistant)
+    - [Demo accounts](#11-demo-accounts)
 7. [API reference](#api-reference)
 8. [Data models](#data-models)
 9. [Frontend](#frontend)
 10. [Getting started](#getting-started)
 11. [Testing](#testing)
 12. [Security design](#security-design)
+13. [Operational notes](#operational-notes)
 
 ---
 
@@ -52,23 +54,29 @@ in one place.
 - Search & apply to property listings; track application status.
 - Approve or decline landlord requests to view documents — access is consent-based and time-limited.
 - Digitally sign rental agreements (canvas-drawn signature stamped into the PDF).
-- Rate landlords after a completed tenancy.
+- **Agreements page**: see every agreement (active, end requests, ended); end an agreement
+  after its end date, or request an early end that the landlord must approve.
+- Rate landlords once a tenancy has ended.
 
 **For landlords**
 - Create and manage property listings with image galleries.
 - Receive applications from tenants with verified profiles; accept/reject with one click.
 - Request document access (one-time / 24-hour / 7-day windows) — granted only by tenant consent.
 - Generate rental agreements (auto-built PDF) and sign digitally.
-- Mark tenancies complete and rate tenants — landlord ratings feed the tenant's trust score.
+- **Agreements page**: end an agreement after its end date, request an early end (tenant
+  approves), or approve/reject a tenant's early-end request.
+- Rate tenants after the tenancy ends — landlord ratings feed the tenant's trust score.
 
 **For admins**
 - Review queue for uploaded documents (verify/reject with remarks).
+- User directory with block/unblock/delete.
 - Trigger trust-score recalculations; every change is logged with reasons.
 
 **Platform-wide**
 - In-app notification bell (30s polling) **and** branded HTML emails at every lifecycle event.
 - Gemini-powered chat assistant that answers questions about *your own* account data only.
 - Audit logging of sensitive actions (document decisions, verification access).
+- Automatic completion of agreements that reach their end date (background job).
 - Fully responsive UI with a consistent design system, site-wide header/footer shell,
   role-aware navigation, and public marketing pages.
 
@@ -100,15 +108,18 @@ in one place.
 ├── backend/                     # Express REST API (JavaScript, CommonJS)
 │   ├── src/
 │   │   ├── app.js               # Express app: security middleware, routes, error handler
-│   │   ├── server.js            # Entry point: dotenv + DB connect + listen
+│   │   ├── server.js            # Entry point: dotenv + DB connect + listen + hourly auto-end job
 │   │   ├── config/              # db.js (Mongoose connect), cloudinary.js
-│   │   ├── controllers/         # Route handlers (one per domain)
-│   │   ├── emails/              # baseTemplate.js (branded HTML shell), templates.js (10 event templates)
+│   │   ├── controllers/         # Route handlers (one per domain; agreementLifecycleController,
+│   │   │                        #   agreementRatingController, rentalHistoryController, …)
+│   │   ├── cron/                # autoEndAgreements.js (completes agreements past their end date)
+│   │   ├── emails/              # baseTemplate.js (branded HTML shell), templates.js (event templates)
 │   │   ├── middlewares/         # auth (JWT), role, upload (multer), property ownership, error handler
-│   │   ├── models/              # Mongoose schemas (User, Document, Property, Agreement, …)
+│   │   ├── models/              # Mongoose schemas (User, Document, Property, Agreement, RentalHistory, …)
 │   │   ├── routes/              # API route definitions per domain
 │   │   ├── scripts/             # seedProperties.js (demo listings)
-│   │   ├── services/            # Business logic (trust score, OCR, fraud, PDF, email, …)
+│   │   ├── services/            # Business logic (trust score, OCR, fraud, PDF, email,
+│   │   │                        #   rentalRecordService, …)
 │   │   └── utils/               # fileSignature.js (magic-byte validation)
 │   └── tests/                   # smoke.e2e.test.js — full lifecycle E2E suite
 └── frontend/                    # React SPA (TypeScript)
@@ -140,7 +151,8 @@ routes/      auth gate (authMiddleware) + role gate (roleMiddleware) + uploads (
 controllers/ validate input → orchestrate → respond { data } or { error: "message" }
    │
    ▼
-services/    business logic (trust score, OCR, fraud, PDF, tokens, email, notifications, audit)
+services/    business logic (trust score, OCR, fraud, PDF, tokens, email, notifications, audit,
+             rental-record sync)
    │
    ▼
 models/      Mongoose schemas → MongoDB
@@ -149,13 +161,13 @@ models/      Mongoose schemas → MongoDB
 Design rules the codebase follows:
 
 - **Side effects never break the primary action.** Notifications, emails, audit logs,
-  trust-score recalculations, and rental-record creation are all wrapped so a failure is
+  trust-score recalculations, and rental-record creation/sync are all wrapped so a failure is
   logged but the API call still succeeds.
 - **Errors have one shape**: `{ "error": "human-readable message" }` — the frontend's
   `getApiError()` relies on it.
 - **Authorization is identity-based, never client-supplied.** Which agreement slot you
-  sign, which side of a rental you're on, whose documents you see — all derived from the
-  authenticated user id compared against the record.
+  sign, which side of a rental you're on, who may approve an end request, which direction
+  a rating goes — all derived from the authenticated user id compared against the record.
 - `errorHandler` is the last middleware; `/api/health` is a dependency-free liveness check.
 
 ### Frontend — single shell, role-aware routing
@@ -169,7 +181,7 @@ role — a tenant never sees "Received Applications", a landlord never sees "My 
 
 ## The rental lifecycle
 
-The complete happy path, end to end (this is also exactly what the smoke test exercises):
+The complete happy path, end to end:
 
 ```mermaid
 sequenceDiagram
@@ -199,8 +211,18 @@ sequenceDiagram
     L->>P: Draw signature → stamped into PDF
     P->>P: Agreement ACTIVE → rental history record auto-created
     P->>T: 📧 "Agreement Fully Signed" (both parties)
-    L->>P: (later) Mark tenancy completed → property relisted
-    T->>P: Rate landlord ⭐ / L->>P: Rate tenant ⭐
+    alt End date reached
+        T->>P: Either party ends the agreement → COMPLETED
+        Note over P: or the hourly auto-end job completes it
+    else Ended early
+        L->>P: Request early end (reason)
+        P->>T: 📧 "End request received"
+        T->>P: Approve → TERMINATED (reject → stays ACTIVE)
+    end
+    P->>P: Rental record completed → property relisted
+    P->>T: 📧 "Agreement ended — you can now rate"
+    T->>P: Rate landlord ⭐
+    L->>P: Rate tenant ⭐
     P->>P: Landlord's rating feeds tenant trust score
 ```
 
@@ -228,9 +250,9 @@ sequenceDiagram
 
 | Role | Can do |
 |---|---|
-| `tenant` | Profile, documents, OCR/fraud checks, apply, respond to verification requests, sign, rate landlord |
-| `landlord` | Profile, listings + images, decide applications, request verification, create/sign agreements, rate tenant |
-| `admin` | Document review queue, verify/reject with remarks, trust-score recalculation |
+| `tenant` | Profile, documents, OCR/fraud checks, apply, respond to verification requests, sign, end/request-end agreements, rate landlord |
+| `landlord` | Profile, listings + images, decide applications, request verification, create/sign agreements, end/request-end agreements, rate tenant |
+| `admin` | Document review queue, verify/reject with remarks, user management, trust-score recalculation |
 
 Enforced server-side by `authMiddleware` (JWT) + `roleMiddleware`; mirrored client-side
 by `RequireRole` (UX only — the API is the real gate).
@@ -297,43 +319,108 @@ time-boxed, and unforgeable**:
   user id to the agreement's `tenantId`/`landlordId`; a role claim can't forge it.
   Double-signing returns 409.
 - When the second signature lands, the agreement flips to **active**, `signedAt` is
-  stamped, a **rental history record is auto-created** (the only way one can be created),
-  and both parties get the "fully signed" email. The property is marked **occupied** —
-  it disappears from public search and stops accepting applications until the landlord
-  marks the tenancy completed.
+  stamped, a **rental history record is auto-created**, and both parties get the "fully
+  signed" email. The property is marked **occupied** — it disappears from public search
+  and stops accepting applications until the tenancy ends.
 - Agreement duration must be **3–11 months**; an agreement can't be created for a
   property that is currently occupied.
 
-### 7. Rental history & two-way ratings
+### 7. Agreement lifecycle: ending a tenancy
 
-- Records exist only via agreement activation (unique per agreement — no duplicates).
-- Only the **landlord** can mark the tenancy **completed** (move-out date) — doing so
-  flips the agreement to `completed` and puts the property back on the market
-  (`occupied` → `available`).
+An agreement moves through these statuses:
+
+```
+draft ──(both sign)──► active ──(early end requested)──► end_requested
+                          │                                  │   │
+                          │ (end date reached)       approve │   │ reject / cancel
+                          ▼                                  ▼   ▼
+                      completed                        terminated  back to active
+```
+
+| Status | Meaning |
+|---|---|
+| `draft` | Created, waiting for signatures |
+| `active` | Both parties signed — the tenancy is running |
+| `end_requested` | One party asked to end early; the other party must respond |
+| `completed` | Ended on/after the end date (`endType: natural`) |
+| `terminated` | Ended before the end date with the other party's approval (`endType: early_approved`) |
+
+**Rules (all enforced by the API, identity-based)**
+
+| Situation | What happens |
+|---|---|
+| Either party ends **on/after the end date** | Completes immediately — no approval needed |
+| Either party ends **before the end date** | Must give a reason (≥ 5 characters); creates an end request and emails the other party |
+| Other party **approves** | Agreement becomes `terminated` |
+| Other party **rejects** | Agreement returns to `active` |
+| Requester **cancels** | Agreement returns to `active` |
+| Requester tries to approve their own request | Refused — only the other side can respond |
+| Second request while one is pending | Refused (409) |
+| End date passes and nobody acts | Hourly auto-end job completes the agreement |
+
+**The Agreements page** (`ActiveAgreementsPage`, shared by tenant and landlord) has three tabs —
+*Active*, *End requests*, *Ended*. `GET /api/agreements/mine/lifecycle` returns each agreement
+with the caller's role, the counterparty, and ready-made action flags (`canInitiateEnd`,
+`isEarlyEnd`, `canRespondEndRequest`, `canCancelEndRequest`, `canRate`, `iRated`, `myRating`)
+so the UI never re-implements the rules. On an ended agreement the page shows either a
+**Rate tenant / Rate landlord** button (opens a rating popup on the same page) or
+**Already rated ★★★★★** once the caller has rated.
+
+**What happens when an agreement ends** (natural end, approved early end, or the auto-end job):
+
+1. The `RentalHistory` record is created if missing and gets its `moveOutDate`
+   (`services/rentalRecordService.js`, idempotent).
+2. The property flips `occupied → available` — unless another open agreement still holds it.
+3. Any pending end request is closed.
+4. Both parties receive an "agreement ended — you can now rate" notification/email.
+
+**Auto-end job** (`cron/autoEndAgreements.js`): started from `server.js` once MongoDB is
+connected, runs immediately and then hourly. Each agreement is claimed with an atomic
+`findOneAndUpdate`, so a user ending it at the same moment can't double-process it. It uses a
+plain `setInterval`, so it runs only on a long-lived server — not on Vercel serverless (the
+manual end button still works there).
+
+### 8. Rental history & two-way ratings
+
+- A record is created when an agreement activates (unique per agreement — no duplicates).
+  The same idempotent sync also **self-heals**: it runs when an agreement ends, when a rating
+  is submitted, and when `GET /rental-history/mine` loads, so an agreement can never be left
+  without its record.
+- A rental is **completed** when its agreement ends (`moveOutDate` is set). The landlord can
+  also use *Mark as completed* on the Rental history page — but only once the agreement has
+  reached its end date (409 before that; early endings must go through the Agreements page so
+  the tenant's approval can't be bypassed).
 - **Rating direction is fixed by identity**: tenants rate landlords, landlords rate
   tenants — the UI doesn't even offer a choice, and the API derives the direction from
-  who is calling. One rating per side; the rated party is notified by email.
-- Only **landlord→tenant** ratings affect the tenant's trust score.
+  who is calling. One rating per side (duplicates return 409); ratings open only after the
+  rental has ended; the rated party is notified by email.
+- Ratings are **embedded in the `RentalHistory` record** (`tenantRating` = what the landlord
+  said about the tenant; `landlordRating` = what the tenant said about the landlord).
+- Two entry points write the same data: `POST /api/agreements/:id/rate` (used by the
+  Agreements page popup — it creates/completes the record on demand) and
+  `PATCH /api/rental-history/:id/rate` (used by the Rental history page, which also accepts a
+  `?rate=<agreementId>` deep link). Only **landlord→tenant** ratings affect the tenant's
+  trust score.
 
-### 8. Notifications & branded emails
+### 9. Notifications & branded emails
 
 Two delivery channels, one source of truth:
 
 - `createNotification()` always writes a `Notification` record (powers the header bell,
   which polls every 30 s with optimistic mark-as-read).
-- For `type: "email"` it additionally sends through `emailService`. Ten **branded HTML
+- For `type: "email"` it additionally sends through `emailService`. **Branded HTML
   templates** (`backend/src/emails/templates.js`) cover the lifecycle: application
   submitted/accepted/rejected, document verified/rejected, verification request
-  received/approved, agreement created/fully signed, rating received. All share one
-  inline-CSS shell (email clients strip `<style>` blocks), include plain-text
-  fallbacks, escape all user-supplied values, and **never carry sensitive payloads** —
-  CTAs link back to the app via `FRONTEND_URL`.
+  received/approved, agreement created/fully signed, **agreement end requested /
+  agreement ended**, rating received. All share one inline-CSS shell (email clients strip
+  `<style>` blocks), include plain-text fallbacks, escape all user-supplied values, and
+  **never carry sensitive payloads** — CTAs link back to the app via `FRONTEND_URL`.
 - Plain-text callers (like the OTP email) are automatically wrapped in the branded shell.
 - **Dev behavior**: if SMTP isn't configured (or sending fails outside production), the
   email is logged to the backend console as `[DEV EMAIL]` instead of throwing — flows
   never block on mail. In production, missing SMTP config is a hard error.
 
-### 9. AI chat assistant
+### 10. AI chat assistant
 
 A floating chat widget (authenticated users only) backed by Gemini. The backend builds a
 JSON context containing **only the caller's own data** (profile, documents, applications,
@@ -341,7 +428,7 @@ trust score, …) and instructs the model to answer solely from it — questions
 users are refused by design. Rate-limited per user; 503/429 states are surfaced
 gracefully in the UI.
 
-### 10. Demo accounts
+### 11. Demo accounts
 
 Two fixed guest logins — **demo tenant** and **demo landlord** — let anyone explore the
 platform without signing up. They are ordinary accounts (`isDemo: true`), so every feature
@@ -456,16 +543,23 @@ and an admin can neither block nor delete themselves or another admin.
 | Method | Path | Access | Purpose |
 |---|---|---|---|
 | POST | `/agreements` | landlord | Create agreement + generate PDF |
-| GET | `/agreements/mine` | party | Own agreements |
+| GET | `/agreements/mine` | party | Own agreements (raw documents) |
+| GET | `/agreements/mine/lifecycle` | party | Own agreements enriched for the Agreements page: caller's role, counterparty, rated state, and action flags |
 | GET | `/agreements/:id` | party/admin | Agreement detail |
 | PATCH | `/agreements/:id/sign` | party | Sign own slot (base64 signature image) |
+| PATCH | `/agreements/:id/end` | party | `{ reason? }` — on/after end date: completes immediately; before it: creates an end request (reason ≥ 5 chars required) |
+| PATCH | `/agreements/:id/end/respond` | party (the *other* side) | `{ action: "approve" \| "reject", note? }` — approve → `terminated`, reject → back to `active` |
+| PATCH | `/agreements/:id/cancel-end-request` | requester | Withdraw own pending request → back to `active` |
+| POST | `/agreements/:id/rate` | party | `{ rating: 1–5, review? }` — rate the other side once the agreement has ended |
+
+Route order matters: `/mine` and `/mine/lifecycle` must be registered **before** `/:id`.
 
 ### Rental history, notifications, trust score, chat
 | Method | Path | Access | Purpose |
 |---|---|---|---|
-| GET | `/rental-history/mine` | party | Own rental records |
-| PATCH | `/rental-history/:id/complete` | landlord (party) | Set move-out date; relists the property |
-| PATCH | `/rental-history/:id/rate` | party | Rate the other side (1–5 + review) |
+| GET | `/rental-history/mine` | party | Own rental records (creates any missing record for an active/ended agreement first) |
+| PATCH | `/rental-history/:id/complete` | landlord (party) | Set move-out date; closes the agreement and relists the property. Refused (409) before the agreement's end date |
+| PATCH | `/rental-history/:id/rate` | party | Rate the other side (1–5 + review); only after the rental has ended; 409 on duplicate |
 | GET | `/notifications/mine` | any authed | Own notifications + unread count |
 | PATCH | `/notifications/:id/read` | any authed | Mark as read |
 | POST | `/trust-score/recalculate/:tenantId` | admin | Force recalculation |
@@ -477,15 +571,15 @@ and an admin can neither block nor delete themselves or another admin.
 
 | Model | Purpose / notable fields |
 |---|---|
-| `User` | fullName, email, phone, bcrypt password, role, OTP fields, accountStatus, `isDemo`; sensitive fields are `select: false` and stripped from JSON |
+| `User` | fullName, email, phone, bcrypt password, role, OTP fields, accountStatus, `isDemo`, `ratingAvg`/`ratingCount`; sensitive fields are `select: false` and stripped from JSON |
 | `RefreshToken` | bcrypt hash of refresh JWT, TTL index auto-expiry |
 | `TenantProfile` / `LandlordProfile` | addresses, employment/salary, police verification status, etc. |
 | `Document` | type, Cloudinary ref, verificationStatus, OCR `extractedData`, remarks, verifiedBy/At |
-| `Property` | title, address, rent, bedrooms, furnishing, type, images, status, landlordId |
+| `Property` | title, address, rent, bedrooms, furnishing, type, images, status (`available`/`occupied`/`inactive`), landlordId |
 | `Application` | tenant ↔ property ↔ landlord, status (pending/accepted/rejected/cancelled), message |
 | `VerificationRequest` | accessType, status, SHA-256 `secureToken` (select:false), expiresAt, viewedAt |
-| `Agreement` | parties, applicationId, unique agreementNumber, dates, rent/deposit, PDF ref, tenantSigned/landlordSigned, status (draft→active→completed/terminated) |
-| `RentalHistory` | unique per agreement; move-in/out, rent, both ratings + reviews, paymentStatus |
+| `Agreement` | parties, applicationId, unique agreementNumber, dates, rent/deposit, PDF ref, `tenantSigned`/`landlordSigned` (+ signed-at times), `signedAt` (activation), `status` (`draft`→`active`⇄`end_requested`→`completed`/`terminated`), `endRequests[]` (requestedBy, requestedByRole, reason, status `pending`/`approved`/`rejected`/`cancelled`, respondedAt, responseNote), `endedAt`, `endType` (`natural`/`early_approved`), `tenantRated`/`landlordRated` flags |
+| `RentalHistory` | unique per agreement (`agreementId`); move-in/out, rent, deposit, `tenantRating`/`landlordRating` + reviews, paymentStatus. Ratings live here, not in a separate collection |
 | `Notification` | receiver, title/message, type (push/email), event, isRead |
 | `TrustScoreHistory` | tenant, score, reasons[], generatedBy |
 | `AuditLog` | user, action, module, request metadata |
@@ -503,13 +597,15 @@ templates), `shadow-card` elevation, documented radius conventions.
 | Area | Routes |
 |---|---|
 | Public | `/` (landing), `/properties`, `/properties/:id`, `/about`, `/services`, `/contact`, `/privacy`, `/terms`, `/login`, `/register`, `/verify-otp`, `/verify/:token` (share-link viewer) |
-| Tenant | `/dashboard`, `/profile`, `/documents`, `/my-applications`, `/verification-requests`, `/rental-history`, `/agreements/:id` |
-| Landlord | `/dashboard`, `/profile`, `/my-properties`, `/received-applications`, `/rental-history`, `/agreements/:id` |
+| Tenant | `/dashboard`, `/profile`, `/documents`, `/my-applications`, `/verification-requests`, `/rental-history`, `/agreements/:id` (view & sign), `/agreements` (Agreements page: active / end requests / ended + ratings) |
+| Landlord | `/dashboard`, `/profile`, `/my-properties`, `/received-applications`, `/rental-history`, `/agreements/:id` (view & sign), `/agreements` (Agreements page) |
 | Admin | `/admin` (document review), `/admin/users`, `/admin/trust-score` |
 
 Notable components: `Header` (role-aware nav, user menu, mobile hamburger), `Footer`,
 `SignatureCapture` (canvas pad with blank-signature guard), `NotificationBell` (polling +
-optimistic reads), `ChatWidget`, `VerificationRequestModal`.
+optimistic reads), `ChatWidget`, `VerificationRequestModal`. `ActiveAgreementsPage` carries its
+own end-agreement and rating popups; `RentalHistoryPage` shows both parties' ratings and
+handles the `?rate=<agreementId>` deep link.
 
 ---
 
@@ -566,7 +662,8 @@ cd frontend && npm run dev
 ```
 
 Sanity checks: `curl http://localhost:5000/api/health` → `{"status":"ok"}`, then open
-http://localhost:5173.
+http://localhost:5173. The backend also starts the hourly auto-end job once MongoDB connects
+(you'll see `[cron] Auto-completed N agreement(s)` when it ends something).
 
 ### 4. Optional: seed demo properties
 
@@ -583,7 +680,7 @@ cd backend && npm run seed:demo
 This creates (or rebuilds) two public guest logins — a tenant and a landlord — and prints
 their credentials. Once they exist, the login page grows a **"Try VeriNest with a demo
 account"** panel that signs a visitor in with one click, so the project can be explored
-without registering. See [Demo accounts](#10-demo-accounts).
+without registering. See [Demo accounts](#11-demo-accounts).
 
 ### 6. Try the full flow
 
@@ -597,6 +694,11 @@ property. Promote a user to `admin`/`landlord` directly in MongoDB if needed
 use tenant-verification
 db.users.updateOne({ email: "you@example.com" }, { $set: { role: "admin" } })
 ```
+
+To try the **end-of-tenancy flow** quickly, sign an agreement from both accounts, then open the
+Agreements page: ending before the end date sends a request the other side must approve; to
+test the natural end without waiting, move the agreement's `endDate` into the past in MongoDB
+(the end button — or the hourly job — then completes it and unlocks ratings).
 
 ---
 
@@ -614,7 +716,8 @@ The **smoke suite** (`backend/tests/smoke.e2e.test.js`) chains the entire journe
 register → OTP → profile → property → document upload → OCR → admin approval → trust
 score → application → verification request → token access — against a **dedicated
 throwaway database** (`tenant-verification-smoke-test`, dropped before/after) with email
-mocked. It's the go-to regression check after cross-cutting changes.
+mocked. It's the go-to regression check after cross-cutting changes. It does **not** yet
+cover the agreement end/rating lifecycle, which is verified manually.
 
 Frontend: `npm run build` (type-check + bundle) and `npm run lint` (oxlint). There are no
 frontend unit tests; UI flows are verified manually / via browser automation.
@@ -635,8 +738,28 @@ frontend unit tests; UI flows are verified manually / via browser automation.
 - **helmet** defaults (CSP, HSTS, …), explicit **CORS allowlist**, **rate limits** on auth/OTP/chat/token-access.
 - **Least disclosure**: generic 404/410 responses on token access; OCR data never exposed
   via share links; email bodies carry no sensitive payloads.
+- **Agreement integrity**: end/approve/cancel/rate permissions are derived from the caller's
+  user id against the agreement, never from client input; an early end can't happen without the
+  other party's approval (the Rental history *Mark as completed* shortcut is blocked before the
+  end date for the same reason).
 - **Auditability**: document decisions and share-link accesses land in `AuditLog`;
   trust-score changes keep their reasons in `TrustScoreHistory`.
+
+---
+
+## Operational notes
+
+- **Stale MongoDB indexes.** Mongoose never drops indexes when a schema changes. If a field was
+  renamed in the past, an old *unique* index can linger and make new inserts fail with
+  `E11000 duplicate key … dup key: { <oldField>: null }`. Compare `db.<collection>.getIndexes()`
+  with the model and drop the extras (e.g. `db.rentalhistories.dropIndex('agreement_1')`).
+  `RentalHistory` should only have `_id_`, `tenantId_1`, `landlordId_1`, `agreementId_1` (unique).
+- **Auto-end job on serverless.** `setInterval` doesn't run on Vercel serverless. There, completion
+  happens when a user presses *End agreement* (allowed after the end date) or via a scheduled
+  call you add yourself.
+- **Data from the old end flow.** Agreements saved before the lifecycle feature may carry the old
+  status `ended`, old `signatures` / `activatedAt` fields, or end requests in the old
+  `requester`/`target` shape; migrate or clear them before relying on the new flow.
 
 ---
 

@@ -66,6 +66,8 @@ const userSchema = new mongoose.Schema(
     isDemo: { type: Boolean, default: false },
     lastLogin: { type: Date },
     refreshToken: { type: String, select: false },
+    ratingAvg: { type: Number, default: 0 },
+    ratingCount: { type: Number, default: 0 },
   },
   {
     timestamps: true,

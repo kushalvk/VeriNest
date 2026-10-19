@@ -20,6 +20,7 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminTrustScorePage from './pages/AdminTrustScorePage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AgreementPage from './pages/AgreementPage';
+import ActiveAgreementsPage from './pages/ActiveAgreementsPage';
 import RentalHistoryPage from './pages/RentalHistoryPage';
 import SelectRolePage from './pages/SelectRolePage';
 import AppShell from './components/AppShell';
@@ -100,6 +101,7 @@ function App() {
             <Route path="/admin/users" element={<RequireRole role="admin"><AdminUsersPage /></RequireRole>} />
             {/* party checks happen in the controller/page by identity */}
             <Route path="/agreements/:id" element={<AgreementPage />} />
+            <Route path="/agreements" element={<ActiveAgreementsPage />} />
             <Route path="/rental-history" element={<RentalHistoryPage />} />
           </Route>
 
