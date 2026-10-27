@@ -7,6 +7,46 @@ export interface PropertyAddress {
   pincode?: string;
 }
 
+export type PropertyVerificationStatus =
+    | 'not_submitted'
+    | 'pending'
+    | 'verified'
+    | 'rejected';
+
+/**
+ * What the API returns depends on the viewer:
+ *  - tenants/public: status (+ grandfathered, reviewedAt) only
+ *  - owner: also taxBill, rejectionReason, attempts
+ *  - admin: everything, including ocr + autoChecks
+ */
+export interface PropertyVerification {
+  status: PropertyVerificationStatus;
+  grandfathered?: boolean;
+  taxBill?: { url?: string; publicId?: string; uploadedAt?: string };
+  ocr?: {
+    status?: 'not_started' | 'done' | 'failed';
+    rawText?: string;
+    confidence?: number;
+    extracted?: {
+      ownerName?: string;
+      propertyTaxId?: string;
+      billYear?: string;
+      amount?: string;
+    };
+  };
+  autoChecks?: {
+    ownerNameMatch?: number | null;
+    addressMatch?: number | null;
+    billYearValid?: boolean | null;
+    duplicateBill?: boolean;
+    lowOcrConfidence?: boolean;
+  };
+  attempts?: number;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+}
+
 export interface Property {
   _id: string;
   landlordId: string;
@@ -25,10 +65,14 @@ export interface Property {
   availability?: string;
   rules?: string[];
   status: 'available' | 'occupied' | 'inactive';
+  verification?: PropertyVerification;
   createdAt: string;
 }
 
-export type PropertyInput = Omit<Partial<Property>, '_id' | 'landlordId' | 'status' | 'createdAt'>;
+export type PropertyInput = Omit<
+    Partial<Property>,
+    '_id' | 'landlordId' | 'status' | 'createdAt' | 'verification'
+>;
 
 export interface SearchFilters {
   city?: string;
@@ -78,6 +122,20 @@ export const uploadPropertyImages = async (id: string, files: File[]) => {
   const { data } = await client.post<{ property: Property }>(
     `/properties/${id}/images`,
     form
+  );
+  return data.property;
+};
+
+/**
+ * Landlord house-tax-bill upload (JPG/PNG). Also the re-upload path after a
+ * rejection. The backend runs OCR, so this can take several seconds.
+ */
+export const uploadTaxBill = async (id: string, file: File) => {
+  const form = new FormData();
+  form.append('taxBill', file);
+  const { data } = await client.post<{ property: Property }>(
+      `/properties/${id}/tax-bill`,
+      form
   );
   return data.property;
 };

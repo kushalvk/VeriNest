@@ -1,104 +1,163 @@
-import axios from 'axios';
 import { client } from './client';
 
-export interface Address {
-  addressLine1?: string;
-  addressLine2?: string;
+export interface PropertyAddress {
+  addressLine?: string;
   city?: string;
   state?: string;
   pincode?: string;
 }
 
-export interface FamilyMember {
-  name?: string;
-  relation?: string;
-  age?: number;
+export type PropertyVerificationStatus =
+    | 'not_submitted'
+    | 'pending'
+    | 'verified'
+    | 'rejected';
+
+/**
+ * What the API returns depends on the viewer:
+ *  - tenants/public: status (+ grandfathered, reviewedAt) only
+ *  - owner: also taxBill, rejectionReason, attempts
+ *  - admin: everything, including ocr + autoChecks
+ */
+export interface PropertyVerification {
+  status: PropertyVerificationStatus;
+  grandfathered?: boolean;
+  taxBill?: { url?: string; publicId?: string; uploadedAt?: string };
+  ocr?: {
+    status?: 'not_started' | 'done' | 'failed';
+    rawText?: string;
+    confidence?: number;
+    extracted?: {
+      ownerName?: string;
+      propertyTaxId?: string;
+      billYear?: string;
+      amount?: string;
+    };
+  };
+  autoChecks?: {
+    ownerNameMatch?: number | null;
+    addressMatch?: number | null;
+    billYearValid?: boolean | null;
+    duplicateBill?: boolean;
+    lowOcrConfidence?: boolean;
+  };
+  attempts?: number;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
 }
 
-export interface EmergencyContact {
-  name?: string;
-  relation?: string;
-  phone?: string;
+export interface Property {
+  _id: string;
+  landlordId: string;
+  title: string;
+  description?: string;
+  propertyType?: string;
+  rent: number;
+  securityDeposit?: number;
+  furnishing?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  area?: number;
+  amenities?: string[];
+  address: PropertyAddress;
+  images?: Array<{ publicId?: string; url?: string }>;
+  availability?: string;
+  rules?: string[];
+  status: 'available' | 'occupied' | 'inactive';
+  verification?: PropertyVerification;
+  createdAt: string;
 }
 
-export type Gender = 'Male' | 'Female' | 'Other';
-export type EmploymentType = 'Full Time' | 'Part Time' | 'Business' | 'Student' | 'Other';
+export type PropertyInput = Omit<
+    Partial<Property>,
+    '_id' | 'landlordId' | 'status' | 'createdAt' | 'verification'
+>;
 
-export interface TenantProfile {
-  _id?: string;
-  userId?: string;
-  dob?: string;
-  gender?: Gender;
-  occupation?: string;
-  companyName?: string;
-  designation?: string;
-  employmentType?: EmploymentType;
-  monthlySalary?: number;
-  aadhaarNumber?: string;
-  panNumber?: string;
-  passportNumber?: string;
-  currentAddress?: Address;
-  permanentAddress?: Address;
-  emergencyContact?: EmergencyContact;
-  familyMembers?: FamilyMember[];
-  policeVerificationStatus?: 'pending' | 'verified' | 'rejected';
-  trustScore?: number;
-  trustReason?: string[];
-}
-
-export interface LandlordProfile {
-  _id?: string;
-  userId?: string;
-  companyName?: string;
-  gstNumber?: string;
-  address?: string;
+export interface SearchFilters {
   city?: string;
-  state?: string;
-  bio?: string;
+  minRent?: string;
+  maxRent?: string;
+  bedrooms?: string;
+  furnishing?: string;
+  propertyType?: string;
+  page?: number;
+  limit?: number;
 }
 
-/** Returns the profile, or null when none exists yet (404). */
-const getOrNull = async <T>(url: string): Promise<T | null> => {
-  try {
-    const { data } = await client.get<{ profile: T }>(url);
-    return data.profile;
-  } catch (err) {
-    if (axios.isAxiosError(err) && err.response?.status === 404) return null;
-    throw err;
-  }
+export interface SearchResult {
+  results: Property[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
+
+export const createProperty = async (input: PropertyInput) => {
+  const { data } = await client.post<{ property: Property }>('/properties', input);
+  return data.property;
 };
 
-export const getMyTenantProfile = () => getOrNull<TenantProfile>('/tenant-profile/me');
-
-export const createTenantProfile = async (input: TenantProfile) => {
-  const { data } = await client.post<{ profile: TenantProfile }>('/tenant-profile', input);
-  return data.profile;
+export const updateProperty = async (id: string, input: PropertyInput) => {
+  const { data } = await client.put<{ property: Property }>(`/properties/${id}`, input);
+  return data.property;
 };
 
-export const updateTenantProfile = async (input: TenantProfile) => {
-  const { data } = await client.put<{ profile: TenantProfile }>('/tenant-profile', input);
-  return data.profile;
+/** Soft delete — the backend marks the listing "inactive". */
+export const deleteProperty = async (id: string) => {
+  const { data } = await client.delete<{ property: Property }>(`/properties/${id}`);
+  return data.property;
+};
+
+export const uploadPropertyImages = async (id: string, files: File[]) => {
+  const form = new FormData();
+  files.forEach((f) => form.append('images', f));
+  const { data } = await client.post<{ property: Property }>(
+      `/properties/${id}/images`,
+      form
+  );
+  return data.property;
 };
 
 /**
- * Save the tenant profile idempotently. PUT /tenant-profile upserts server-side
- * (create-or-update, keyed by the caller's user id), so a single call works
- * whether or not a profile already exists — no "already exists" (409) or "not
- * found" (404) errors from the page guessing create-vs-edit from a stale load.
+ * Landlord house-tax-bill upload (JPG/PNG). Also the re-upload path after a
+ * rejection. The backend runs OCR, so this can take several seconds.
  */
-export const saveTenantProfile = (input: TenantProfile) => updateTenantProfile(input);
-
-export const getMyLandlordProfile = () => getOrNull<LandlordProfile>('/landlord-profile/me');
-
-export const createLandlordProfile = async (input: LandlordProfile) => {
-  const { data } = await client.post<{ profile: LandlordProfile }>('/landlord-profile', input);
-  return data.profile;
+export const uploadTaxBill = async (id: string, file: File) => {
+  const form = new FormData();
+  form.append('taxBill', file);
+  const { data } = await client.post<{ property: Property }>(
+      `/properties/${id}/tax-bill`,
+      form
+  );
+  return data.property;
 };
 
-export const updateLandlordProfile = async (input: LandlordProfile) => {
-  const { data } = await client.put<{ profile: LandlordProfile }>('/landlord-profile', input);
-  return data.profile;
+export const getProperty = async (id: string) => {
+  const { data } = await client.get<{ property: Property }>(`/properties/${id}`);
+  return data.property;
 };
 
-/** Idempotent landlord-profile save (PUT upserts) — see saveTenantProfile. */
-export const saveLandlordProfile = (input: LandlordProfile) => updateLandlordProfile(input);
+export const searchProperties = async (filters: SearchFilters) => {
+  const params: Record<string, string | number> = {};
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') params[key] = value;
+  });
+  const { data } = await client.get<SearchResult>('/properties', { params });
+  return data;
+};
+
+export const getMyProperties = async () => {
+  const { data } = await client.get<{ properties: Property[]; pagination: Pagination }>(
+      '/properties/mine',
+      { params: { limit: 100 } }
+  );
+  return data.properties;
+};

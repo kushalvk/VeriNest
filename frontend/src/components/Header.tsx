@@ -45,6 +45,7 @@ const roleLinks: Record<Role, NavItem[]> = {
   admin: [
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/admin', label: 'Document Review', end: true },
+    { to: '/admin/properties', label: 'Property Review' },
     { to: '/admin/users', label: 'Users' },
     { to: '/admin/trust-score', label: 'Trust Scores' },
   ],

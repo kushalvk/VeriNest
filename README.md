@@ -1,17 +1,19 @@
 # VeriNest — Digital Tenant Verification Platform
 
 > **Renting, without the leap of faith.**
-> VeriNest verifies tenant documents, computes transparent trust scores, and handles
-> digitally signed rental agreements — so tenants and landlords can trust each other
-> before the keys change hands.
+> VeriNest verifies tenant documents **and landlord property ownership**, computes transparent
+> trust scores, and handles digitally signed rental agreements — so tenants and landlords can
+> trust each other before the keys change hands.
 
 VeriNest is a full-stack web platform (M.Sc. IT Semester 3 minor project) that digitizes
 the entire rental journey: tenants build a **verified profile once** (identity/income
 documents checked through an OCR-assisted review pipeline) and share it with landlords
-**on their own terms** through secure, expiring access links. Landlords see an
-**explainable trust score** instead of a stack of unverifiable paperwork, and the whole
-flow — application → verification → agreement signing → active tenancy → agreement end →
-post-tenancy ratings — happens in one place.
+**on their own terms** through secure, expiring access links. Landlords prove they own the
+property by uploading a **house tax bill** that an admin verifies before the listing goes
+live, so tenants only ever see **verified listings**. Landlords see an **explainable trust
+score** instead of a stack of unverifiable paperwork, and the whole flow — property
+verification → application → verification → agreement signing → active tenancy → agreement
+end → post-tenancy ratings — happens in one place.
 
 ---
 
@@ -26,14 +28,15 @@ post-tenancy ratings — happens in one place.
     - [Authentication & sessions](#1-authentication--sessions)
     - [Roles](#2-roles)
     - [Document verification pipeline](#3-document-verification-pipeline)
-    - [Trust score](#4-trust-score)
-    - [Secure document sharing](#5-secure-document-sharing-verification-requests)
-    - [Rental agreements & digital signatures](#6-rental-agreements--digital-signatures)
-    - [Agreement lifecycle: ending a tenancy](#7-agreement-lifecycle-ending-a-tenancy)
-    - [Rental history & two-way ratings](#8-rental-history--two-way-ratings)
-    - [Notifications & branded emails](#9-notifications--branded-emails)
-    - [AI chat assistant](#10-ai-chat-assistant)
-    - [Demo accounts](#11-demo-accounts)
+    - [Landlord property verification](#4-landlord-property-verification-house-tax-bill)
+    - [Trust score](#5-trust-score)
+    - [Secure document sharing](#6-secure-document-sharing-verification-requests)
+    - [Rental agreements & digital signatures](#7-rental-agreements--digital-signatures)
+    - [Agreement lifecycle: ending a tenancy](#8-agreement-lifecycle-ending-a-tenancy)
+    - [Rental history & two-way ratings](#9-rental-history--two-way-ratings)
+    - [Notifications & branded emails](#10-notifications--branded-emails)
+    - [AI chat assistant](#11-ai-chat-assistant)
+    - [Demo accounts](#12-demo-accounts)
 7. [API reference](#api-reference)
 8. [Data models](#data-models)
 9. [Frontend](#frontend)
@@ -41,6 +44,7 @@ post-tenancy ratings — happens in one place.
 11. [Testing](#testing)
 12. [Security design](#security-design)
 13. [Operational notes](#operational-notes)
+14. [Known limitations](#known-limitations)
 
 ---
 
@@ -51,7 +55,8 @@ post-tenancy ratings — happens in one place.
 - Upload identity/income documents (Aadhaar, PAN, salary slips, …) — validated by magic-byte
   file signature checks, stored on Cloudinary, text-extracted with OCR, screened by fraud heuristics.
 - A **transparent trust score** with human-readable reasons for every point awarded.
-- Search & apply to property listings; track application status.
+- Search & apply to property listings — only **admin-verified** listings are shown, each marked
+  with a **Verified owner** badge on its detail page; track application status.
 - Approve or decline landlord requests to view documents — access is consent-based and time-limited.
 - Digitally sign rental agreements (canvas-drawn signature stamped into the PDF).
 - **Agreements page**: see every agreement (active, end requests, ended); end an agreement
@@ -60,6 +65,9 @@ post-tenancy ratings — happens in one place.
 
 **For landlords**
 - Create and manage property listings with image galleries.
+- **Prove ownership per property**: upload a house tax bill when adding a listing. An admin
+  verifies it (OCR-assisted) before the listing becomes visible to tenants. See each listing's
+  status (not submitted / pending / verified / rejected), read the rejection reason, and re-upload.
 - Receive applications from tenants with verified profiles; accept/reject with one click.
 - Request document access (one-time / 24-hour / 7-day windows) — granted only by tenant consent.
 - Generate rental agreements (auto-built PDF) and sign digitally.
@@ -69,13 +77,16 @@ post-tenancy ratings — happens in one place.
 
 **For admins**
 - Review queue for uploaded documents (verify/reject with remarks).
+- **Property verification queue**: see the uploaded tax bill next to what the landlord entered
+  and what OCR read, with advisory auto-checks (owner name, address, bill year, duplicate tax
+  ID, OCR confidence); approve, or reject with a reason the landlord sees.
 - User directory with block/unblock/delete.
 - Trigger trust-score recalculations; every change is logged with reasons.
 
 **Platform-wide**
 - In-app notification bell (30s polling) **and** branded HTML emails at every lifecycle event.
 - Gemini-powered chat assistant that answers questions about *your own* account data only.
-- Audit logging of sensitive actions (document decisions, verification access).
+- Audit logging of sensitive actions (document decisions, property verification, verification access).
 - Automatic completion of agreements that reach their end date (background job).
 - Fully responsive UI with a consistent design system, site-wide header/footer shell,
   role-aware navigation, and public marketing pages.
@@ -89,8 +100,8 @@ post-tenancy ratings — happens in one place.
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 3, Zustand (state), Axios, React Router 7 |
 | Backend | Node.js, Express 5 (CommonJS), Mongoose 9 |
 | Database | MongoDB |
-| File storage | Cloudinary (documents, property images, agreement PDFs) |
-| OCR | tesseract.js (local, no API key) + sharp (image preprocessing) |
+| File storage | Cloudinary (documents, property images, house tax bills, agreement PDFs) |
+| OCR | tesseract.js (local, no API key; tenant documents and house tax bills) + sharp (image preprocessing) |
 | PDF generation | pdf-lib (agreement generation + signature stamping) |
 | AI assistant | Google Gemini via `@google/genai` (`gemini-flash-lite-latest`) |
 | Email | Nodemailer (SMTP) with branded inline-CSS HTML templates |
@@ -110,25 +121,30 @@ post-tenancy ratings — happens in one place.
 │   │   ├── app.js               # Express app: security middleware, routes, error handler
 │   │   ├── server.js            # Entry point: dotenv + DB connect + listen + hourly auto-end job
 │   │   ├── config/              # db.js (Mongoose connect), cloudinary.js
-│   │   ├── controllers/         # Route handlers (one per domain; agreementLifecycleController,
+│   │   ├── controllers/         # Route handlers (one per domain; propertyController,
+│   │   │                        #   adminPropertyController, agreementLifecycleController,
 │   │   │                        #   agreementRatingController, rentalHistoryController, …)
 │   │   ├── cron/                # autoEndAgreements.js (completes agreements past their end date)
 │   │   ├── emails/              # baseTemplate.js (branded HTML shell), templates.js (event templates)
-│   │   ├── middlewares/         # auth (JWT), role, upload (multer), property ownership, error handler
+│   │   ├── middlewares/         # auth (JWT), optionalAuth, role, upload (multer), taxBillUpload,
+│   │   │                        #   property ownership, error handler
 │   │   ├── models/              # Mongoose schemas (User, Document, Property, Agreement, RentalHistory, …)
-│   │   ├── routes/              # API route definitions per domain
-│   │   ├── scripts/             # seedProperties.js (demo listings)
+│   │   ├── routes/              # API route definitions per domain (incl. adminPropertyRoutes)
+│   │   ├── scripts/             # seedProperties.js (demo listings),
+│   │   │                        #   migratePropertyVerification.js (one-off backfill)
 │   │   ├── services/            # Business logic (trust score, OCR, fraud, PDF, email,
-│   │   │                        #   rentalRecordService, …)
+│   │   │                        #   propertyVerificationService, rentalRecordService, …)
 │   │   └── utils/               # fileSignature.js (magic-byte validation)
 │   └── tests/                   # smoke.e2e.test.js — full lifecycle E2E suite
 └── frontend/                    # React SPA (TypeScript)
     └── src/
-        ├── api/                 # Typed API modules (one per domain) + shared axios client
-        ├── components/          # Header, Footer, Layout, SignatureCapture, NotificationBell, ChatWidget, …
+        ├── api/                 # Typed API modules (one per domain, types live beside their calls)
+        │                        #   + shared axios client
+        ├── components/          # Header, Footer, Layout, SignatureCapture, NotificationBell, ChatWidget,
+        │                        #   PropertyVerificationPanel, AdminPropertyReviewModal, …
         ├── pages/               # Route pages (public, tenant, landlord, admin)
         ├── store/               # authStore.ts — auth state (zustand, persisted session)
-        ├── utils/               # client-side file validation
+        ├── utils/               # client-side file validation, propertyVerification (badges + auto-check chips)
         └── App.tsx              # Route tree: site-wide Layout → public + RequireAuth/RequireRole routes
 ```
 
@@ -152,7 +168,7 @@ controllers/ validate input → orchestrate → respond { data } or { error: "me
    │
    ▼
 services/    business logic (trust score, OCR, fraud, PDF, tokens, email, notifications, audit,
-             rental-record sync)
+             rental-record sync, property-verification auto-checks)
    │
    ▼
 models/      Mongoose schemas → MongoDB
@@ -168,6 +184,8 @@ Design rules the codebase follows:
 - **Authorization is identity-based, never client-supplied.** Which agreement slot you
   sign, which side of a rental you're on, who may approve an end request, which direction
   a rating goes — all derived from the authenticated user id compared against the record.
+- **Verification state is server-owned.** A property's `verification` block is stripped from
+  every request body, so a landlord can't mark their own listing verified.
 - `errorHandler` is the last middleware; `/api/health` is a dependency-free liveness check.
 
 ### Frontend — single shell, role-aware routing
@@ -195,8 +213,11 @@ sequenceDiagram
     P->>P: OCR extraction + fraud heuristics
     A->>P: Review document → verify/reject (remarks)
     P->>T: 📧 "Document Verified" + trust score recalculated
-    L->>P: Create property listing
-    T->>P: Apply to property
+    L->>P: Create property listing + upload house tax bill
+    P->>P: OCR + automatic checks (owner name / address / bill year / duplicate)
+    A->>P: Review bill → approve / reject (reason)
+    P->>L: 🔔 "Property verified — now visible to tenants" (or the rejection reason)
+    T->>P: Search verified listings → apply to property
     P->>L: 📧 "New Application Received"
     L->>P: Accept application
     P->>T: 📧 "Application Accepted 🎉"
@@ -245,14 +266,16 @@ sequenceDiagram
 - The axios client attaches the Bearer token and, on a 401, performs **exactly one**
   silent refresh (via plain axios to avoid interceptor recursion) before redirecting to login.
 - Rate limiting protects register, login, OTP send, chat, and token-access endpoints.
+- A small `optionalAuth` middleware lets public routes (currently only `GET /properties/:id`)
+  recognize a signed-in owner/admin without ever rejecting anonymous visitors.
 
 ### 2. Roles
 
 | Role | Can do |
 |---|---|
-| `tenant` | Profile, documents, OCR/fraud checks, apply, respond to verification requests, sign, end/request-end agreements, rate landlord |
-| `landlord` | Profile, listings + images, decide applications, request verification, create/sign agreements, end/request-end agreements, rate tenant |
-| `admin` | Document review queue, verify/reject with remarks, user management, trust-score recalculation |
+| `tenant` | Profile, documents, OCR/fraud checks, apply (to verified listings), respond to verification requests, sign, end/request-end agreements, rate landlord |
+| `landlord` | Profile, listings + images, **upload a house tax bill per property**, decide applications, request verification, create/sign agreements, end/request-end agreements, rate tenant |
+| `admin` | Document review queue, **property (tax bill) verification queue**, verify/reject with remarks, user management, trust-score recalculation |
 
 Enforced server-side by `authMiddleware` (JWT) + `roleMiddleware`; mirrored client-side
 by `RequireRole` (UX only — the API is the real gate).
@@ -272,7 +295,77 @@ upload (multer, in-memory)
 `extractedData` and internal metadata are **never** exposed through the public
 document-sharing endpoint — only document type, file URL, and verification status.
 
-### 4. Trust score
+### 4. Landlord property verification (house tax bill)
+
+Tenants are verified through documents; landlords are verified **through their properties**.
+Each listing needs its own house tax bill, checked by an admin, before tenants can see it.
+Verification is per property (one landlord, many properties, many bills).
+
+**Status lifecycle**
+
+```
+not_submitted ──(upload bill)──► pending ──(admin approves)──► verified
+                                    │  ▲                          │
+                          (rejects) ▼  │ (re-upload)              │ (address edited)
+                                 rejected                         ▼
+                                                  pending / not_submitted (re-verification)
+```
+
+| Status | Meaning | Visible to tenants? |
+|---|---|---|
+| `not_submitted` | Listing created, no bill yet (default) | No |
+| `pending` | Bill uploaded, waiting for an admin | No |
+| `verified` | Admin approved the bill | **Yes** (if also `available`) |
+| `rejected` | Admin rejected it with a reason the landlord sees; re-upload allowed | No |
+
+**Landlord flow**
+
+1. **Add property** — the form requires a house tax bill (JPG/PNG, max 4 MB client-side /
+   5 MB server-side). The app creates the listing, then uploads the bill; the listing starts as
+   `pending`. If the bill upload fails, the listing still exists (hidden) and the property card
+   offers **Upload tax bill** to retry.
+2. **Upload pipeline** — magic-byte file check → Cloudinary → OCR (tesseract.js; English by
+   default, `TAX_BILL_OCR_LANG=eng+guj` for Gujarati bills) → field extraction (owner name,
+   property tax ID, bill year, amount) → advisory auto-checks → `pending`. OCR is best effort:
+   a failed or empty scan never blocks the submission; the admin reviews the image either way.
+3. **Track & fix** — each card shows a status badge; a rejected listing shows the admin's reason
+   and an **Upload new bill** button. A pending bill can be replaced. A property can be
+   submitted at most **5 times**; after a verified decision no more uploads are accepted.
+4. **Editing a verified listing's address** sends it back to review (it needs a bill that matches
+   the new address) and hides it from tenants until re-approved.
+
+**Admin flow** (`/admin/properties`, "Property Review")
+
+- Tabs for **pending / verified / rejected** with live counts; the pending queue is oldest-first.
+- The review modal shows the **bill image**, what the landlord entered vs. what OCR read, the OCR
+  confidence and raw text, and **advisory chips**:
+
+  | Check | How it works |
+    |---|---|
+  | Owner name match | % of the landlord's name tokens found anywhere in the OCR text (order-insensitive) |
+  | Address match | % of the entered address/city/pincode tokens found in the OCR text |
+  | Bill year | Accepts the current or previous Indian financial year (April start) |
+  | Duplicate bill | Same property tax ID already on another property |
+  | Low OCR confidence | Confidence below 40% or no readable text |
+
+  Chips are **advisory only** — nothing is auto-approved or auto-rejected; OCR can misread.
+- **Approve**, or **Reject** with a required reason (≥ 3 characters). The decision is atomic and
+  only valid for a `pending` property, so two admins can't both decide it (the second gets 409).
+  The landlord gets an in-app notification and the action is audit-logged.
+
+**What tenants see**
+
+- Search (`GET /properties`) returns only `available` **and** `verified` listings, and strips the
+  bill, OCR text, auto-checks and review details from every result.
+- A direct link to an unverified listing returns **404** for everyone except its owner and admins
+  (the owner/admin sees a "not verified yet" notice). Verified listings show a **Verified owner**
+  badge, and the Apply button is hidden for anything unverified.
+
+**Existing listings.** Listings created before this feature have no verification data. Run
+`npm run migrate:property-verification` once: by default it **grandfathers** them as verified;
+pass `-- --pending` to force every existing listing through review instead.
+
+### 5. Trust score
 
 `computeTrustScore` (`backend/src/services/trustScoreService.js`) is a **pure,
 deterministic function** — no DB access, fully unit-tested — so every score is
@@ -289,8 +382,9 @@ reproducible and explainable. Rules:
 Every recalculation writes a `TrustScoreHistory` entry with the plain-language reasons
 that contributed (e.g. *"Verified aadhaar document (+15)"*). Recalculation triggers:
 admin verifies a document, a landlord rates the tenant, or an admin forces one.
+(Property verification is separate and does not affect the tenant trust score.)
 
-### 5. Secure document sharing (verification requests)
+### 6. Secure document sharing (verification requests)
 
 The most security-sensitive flow, designed so raw document access is **consent-based,
 time-boxed, and unforgeable**:
@@ -308,7 +402,7 @@ time-boxed, and unforgeable**:
 4. Every successful access is **audit-logged**. Request logs **redact** the token, and
    notification emails never contain it — they tell the landlord to check the platform.
 
-### 6. Rental agreements & digital signatures
+### 7. Rental agreements & digital signatures
 
 - Landlord creates an agreement from an accepted application → a **PDF is generated**
   (pdf-lib) with the terms, parties, and signature boxes, and uploaded to Cloudinary.
@@ -325,7 +419,7 @@ time-boxed, and unforgeable**:
 - Agreement duration must be **3–11 months**; an agreement can't be created for a
   property that is currently occupied.
 
-### 7. Agreement lifecycle: ending a tenancy
+### 8. Agreement lifecycle: ending a tenancy
 
 An agreement moves through these statuses:
 
@@ -380,7 +474,7 @@ connected, runs immediately and then hourly. Each agreement is claimed with an a
 plain `setInterval`, so it runs only on a long-lived server — not on Vercel serverless (the
 manual end button still works there).
 
-### 8. Rental history & two-way ratings
+### 9. Rental history & two-way ratings
 
 - A record is created when an agreement activates (unique per agreement — no duplicates).
   The same idempotent sync also **self-heals**: it runs when an agreement ends, when a rating
@@ -402,7 +496,7 @@ manual end button still works there).
   `?rate=<agreementId>` deep link). Only **landlord→tenant** ratings affect the tenant's
   trust score.
 
-### 9. Notifications & branded emails
+### 10. Notifications & branded emails
 
 Two delivery channels, one source of truth:
 
@@ -415,12 +509,13 @@ Two delivery channels, one source of truth:
   agreement ended**, rating received. All share one inline-CSS shell (email clients strip
   `<style>` blocks), include plain-text fallbacks, escape all user-supplied values, and
   **never carry sensitive payloads** — CTAs link back to the app via `FRONTEND_URL`.
+- Property verification decisions currently notify the landlord **in-app only** (no email template yet).
 - Plain-text callers (like the OTP email) are automatically wrapped in the branded shell.
 - **Dev behavior**: if SMTP isn't configured (or sending fails outside production), the
   email is logged to the backend console as `[DEV EMAIL]` instead of throwing — flows
   never block on mail. In production, missing SMTP config is a hard error.
 
-### 10. AI chat assistant
+### 11. AI chat assistant
 
 A floating chat widget (authenticated users only) backed by Gemini. The backend builds a
 JSON context containing **only the caller's own data** (profile, documents, applications,
@@ -428,7 +523,7 @@ trust score, …) and instructs the model to answer solely from it — questions
 users are refused by design. Rate-limited per user; 503/429 states are surfaced
 gracefully in the UI.
 
-### 11. Demo accounts
+### 12. Demo accounts
 
 Two fixed guest logins — **demo tenant** and **demo landlord** — let anyone explore the
 platform without signing up. They are ordinary accounts (`isDemo: true`), so every feature
@@ -447,8 +542,10 @@ trust-score pass. Whatever the previous visitor did is gone.
 - While signed in as a demo user the app shows a standing **demo-mode banner**.
 - The demo landlord's seeded listings are **hidden from the public property search**
   (`GET /api/properties`) so throwaway fixtures never pollute the real market. They still
-  appear under the landlord's own `/properties/mine` and stay reachable by id, so the seeded
-  applications keep linking to a working detail page.
+  appear under the landlord's own `/properties/mine`. Because unverified listings now return
+  404 on `GET /properties/:id` for everyone but the owner/admin, the demo listings must be
+  seeded already verified for the seeded applications to link to a working detail page
+  (see [Known limitations](#known-limitations)).
 - Two people demoing at once share one workspace; the second sign-in resets the first one's
   data mid-session. That's the accepted trade-off — nothing real may ever live here.
 - Create/rebuild them with `npm run seed:demo`; override the passwords with
@@ -515,12 +612,20 @@ and an admin can neither block nor delete themselves or another admin.
 ### Properties
 | Method | Path | Access | Purpose |
 |---|---|---|---|
-| GET | `/properties` | public | Search (city, rent range, bedrooms, furnishing, type; paginated) |
-| GET | `/properties/:id` | public | Listing detail |
-| POST | `/properties` | landlord | Create listing |
-| GET | `/properties/mine` | landlord | Own listings |
-| PUT / DELETE | `/properties/:id` | owner | Update / remove listing |
-| POST | `/properties/:id/images` | owner | Upload up to 10 images |
+| GET | `/properties` | public | Search (city, rent range, bedrooms, furnishing, type; paginated). Returns only `available` **and** admin-`verified` listings; bill/OCR/review details are never included |
+| GET | `/properties/:id` | public* | Listing detail. *Unverified listings return 404 unless the caller is the owner or an admin (send a Bearer token). Response is trimmed per viewer (public / owner / admin) |
+| POST | `/properties` | landlord | Create listing (starts `verification.status: "not_submitted"`; any `verification` key in the body is ignored) |
+| GET | `/properties/mine` | landlord | Own listings, all statuses, with verification status, bill link and rejection reason |
+| PUT | `/properties/:id` | owner | Update listing. Changing the address of a verified listing sends it back to review (`reverification: true` in the response) |
+| DELETE | `/properties/:id` | owner | Soft-delete (marks the listing `inactive`) |
+| POST | `/properties/:id/images` | owner | Upload up to 10 images (multipart `images`) |
+| POST | `/properties/:id/tax-bill` | owner | Upload/replace the house tax bill (multipart `taxBill`, JPG/PNG ≤ 5 MB). Runs OCR + auto-checks, sets status `pending`. 409 if already verified; 403 after 5 submissions |
+
+### Admin — property verification
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | `/admin/properties?status=pending\|verified\|rejected&page=&limit=` | admin | Review queue with full verification data (bill URL, OCR fields, auto-checks), the populated landlord, and per-status `counts` |
+| PATCH | `/admin/properties/:id` | admin | `{ status: "verified" \| "rejected", remarks? }` — `remarks` (≥ 3 chars) required to reject. Only valid while `pending` (409 otherwise); atomic, so concurrent admins can't both decide. Notifies the landlord in-app and writes an audit log |
 
 ### Applications
 | Method | Path | Access | Purpose |
@@ -552,7 +657,7 @@ and an admin can neither block nor delete themselves or another admin.
 | PATCH | `/agreements/:id/cancel-end-request` | requester | Withdraw own pending request → back to `active` |
 | POST | `/agreements/:id/rate` | party | `{ rating: 1–5, review? }` — rate the other side once the agreement has ended |
 
-Route order matters: `/mine` and `/mine/lifecycle` must be registered **before** `/:id`.
+Route order matters: `/mine` and `/mine/lifecycle` must be registered **before** `/:id` (the same applies to `/properties/mine`).
 
 ### Rental history, notifications, trust score, chat
 | Method | Path | Access | Purpose |
@@ -575,7 +680,7 @@ Route order matters: `/mine` and `/mine/lifecycle` must be registered **before**
 | `RefreshToken` | bcrypt hash of refresh JWT, TTL index auto-expiry |
 | `TenantProfile` / `LandlordProfile` | addresses, employment/salary, police verification status, etc. |
 | `Document` | type, Cloudinary ref, verificationStatus, OCR `extractedData`, remarks, verifiedBy/At |
-| `Property` | title, address, rent, bedrooms, furnishing, type, images, status (`available`/`occupied`/`inactive`), landlordId |
+| `Property` | title, address, rent, bedrooms, furnishing, type, images, status (`available`/`occupied`/`inactive`), landlordId, and a server-owned **`verification`** block: `status` (`not_submitted`/`pending`/`verified`/`rejected`), `grandfathered`, `taxBill` (Cloudinary ref + uploadedAt), `ocr` (status, rawText, confidence, extracted owner name / property tax ID / bill year / amount), `autoChecks` (ownerNameMatch, addressMatch, billYearValid, duplicateBill, lowOcrConfidence), `attempts`, `reviewedBy`/`reviewedAt`, `rejectionReason` |
 | `Application` | tenant ↔ property ↔ landlord, status (pending/accepted/rejected/cancelled), message |
 | `VerificationRequest` | accessType, status, SHA-256 `secureToken` (select:false), expiresAt, viewedAt |
 | `Agreement` | parties, applicationId, unique agreementNumber, dates, rent/deposit, PDF ref, `tenantSigned`/`landlordSigned` (+ signed-at times), `signedAt` (activation), `status` (`draft`→`active`⇄`end_requested`→`completed`/`terminated`), `endRequests[]` (requestedBy, requestedByRole, reason, status `pending`/`approved`/`rejected`/`cancelled`, respondedAt, responseNote), `endedAt`, `endType` (`natural`/`early_approved`), `tenantRated`/`landlordRated` flags |
@@ -596,16 +701,20 @@ templates), `shadow-card` elevation, documented radius conventions.
 
 | Area | Routes |
 |---|---|
-| Public | `/` (landing), `/properties`, `/properties/:id`, `/about`, `/services`, `/contact`, `/privacy`, `/terms`, `/login`, `/register`, `/verify-otp`, `/verify/:token` (share-link viewer) |
+| Public | `/` (landing), `/properties`, `/properties/:id` (verified owner badge), `/about`, `/services`, `/contact`, `/privacy`, `/terms`, `/login`, `/register`, `/verify-otp`, `/verify/:token` (share-link viewer) |
 | Tenant | `/dashboard`, `/profile`, `/documents`, `/my-applications`, `/verification-requests`, `/rental-history`, `/agreements/:id` (view & sign), `/agreements` (Agreements page: active / end requests / ended + ratings) |
-| Landlord | `/dashboard`, `/profile`, `/my-properties`, `/received-applications`, `/rental-history`, `/agreements/:id` (view & sign), `/agreements` (Agreements page) |
-| Admin | `/admin` (document review), `/admin/users`, `/admin/trust-score` |
+| Landlord | `/dashboard`, `/profile`, `/my-properties` (listings + tax-bill upload and verification status), `/received-applications`, `/rental-history`, `/agreements/:id` (view & sign), `/agreements` (Agreements page) |
+| Admin | `/admin` (document review), `/admin/properties` (property verification), `/admin/users`, `/admin/trust-score` |
 
 Notable components: `Header` (role-aware nav, user menu, mobile hamburger), `Footer`,
 `SignatureCapture` (canvas pad with blank-signature guard), `NotificationBell` (polling +
-optimistic reads), `ChatWidget`, `VerificationRequestModal`. `ActiveAgreementsPage` carries its
-own end-agreement and rating popups; `RentalHistoryPage` shows both parties' ratings and
-handles the `?rate=<agreementId>` deep link.
+optimistic reads), `ChatWidget`, `VerificationRequestModal`. `PropertyVerificationPanel`
+(under each landlord property card: status badge, rejection reason, bill link, upload/replace)
+and `AdminPropertyReviewModal` (bill image, entered-vs-OCR comparison, advisory chips,
+approve / reject-with-reason) back the property verification flow. `ActiveAgreementsPage`
+carries its own end-agreement and rating popups; `RentalHistoryPage` shows both parties'
+ratings and handles the `?rate=<agreementId>` deep link. API types live next to their calls in
+`src/api/` (there is no separate `types/` folder).
 
 ---
 
@@ -643,8 +752,9 @@ cp frontend/.env.example frontend/.env
 | `ALLOWED_ORIGINS` | no | CORS allowlist, comma-separated (default `http://localhost:5173`) |
 | `FRONTEND_URL` | no | Base URL for links inside emails (default `http://localhost:5173`) |
 | `EMAIL_SMTP_HOST/PORT/USER/PASS` | for real email | e.g. `smtp.gmail.com` + app password; without it, emails print to the console |
-| `CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET` | for uploads | Documents, images, agreement PDFs |
+| `CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET` | for uploads | Documents, images, house tax bills, agreement PDFs |
 | `GEMINI_API_KEY` | for chat | AI assistant (`GEMINI_MODEL` optional override) |
+| `TAX_BILL_OCR_LANG` | no (`eng`) | Tesseract language(s) for house tax bills, e.g. `eng+guj` for Gujarati bills (slower; downloads language data on first use) |
 | `HF_API_KEY` | reserved | Not currently required |
 
 **frontend/.env** — just `VITE_API_BASE_URL=http://localhost:5000/api`.
@@ -665,13 +775,27 @@ Sanity checks: `curl http://localhost:5000/api/health` → `{"status":"ok"}`, th
 http://localhost:5173. The backend also starts the hourly auto-end job once MongoDB connects
 (you'll see `[cron] Auto-completed N agreement(s)` when it ends something).
 
-### 4. Optional: seed demo properties
+### 4. Backfill existing properties (once, if you already have listings)
+
+Listings created before property verification have no `verification` data and stay hidden from
+tenants until they're migrated:
+
+```bash
+cd backend
+npm run migrate:property-verification              # grandfather existing listings as verified
+npm run migrate:property-verification -- --pending # or force them through review
+```
+
+### 5. Optional: seed demo properties
 
 ```bash
 cd backend && npm run seed:properties
 ```
 
-### 5. Optional: seed the guest demo accounts
+Seeded listings are created unverified; run the migration above afterwards (or mark them verified
+in the seed script) to make them visible to tenants. See [Known limitations](#known-limitations).
+
+### 6. Optional: seed the guest demo accounts
 
 ```bash
 cd backend && npm run seed:demo
@@ -680,20 +804,25 @@ cd backend && npm run seed:demo
 This creates (or rebuilds) two public guest logins — a tenant and a landlord — and prints
 their credentials. Once they exist, the login page grows a **"Try VeriNest with a demo
 account"** panel that signs a visitor in with one click, so the project can be explored
-without registering. See [Demo accounts](#11-demo-accounts).
+without registering. See [Demo accounts](#12-demo-accounts).
 
-### 6. Try the full flow
+### 7. Try the full flow
 
 Register a tenant (the OTP arrives by email, or in the backend console when SMTP is
-unconfigured), complete the profile, upload a document. Register a landlord, list a
-property. Promote a user to `admin`/`landlord` directly in MongoDB if needed
-(registration deliberately has no role selection):
+unconfigured), complete the profile, upload a document. Register a landlord, add a property
+**with a house tax bill** (a clear JPG/PNG whose labels read like "Name of Owner:", "Property
+Tax No:", "Financial Year:", "Amount Payable:" OCRs best). Promote a user to `admin`/`landlord`
+directly in MongoDB if needed (registration deliberately has no role selection):
 
 ```js
 // mongosh
 use tenant-verification
 db.users.updateOne({ email: "you@example.com" }, { $set: { role: "admin" } })
 ```
+
+Then, as admin, open **Property Review**, check the advisory chips against the bill image, and
+approve — the listing appears in tenant search with a *Verified owner* badge. Try rejecting
+another one with a reason and re-uploading as the landlord.
 
 To try the **end-of-tenancy flow** quickly, sign an agreement from both accounts, then open the
 Agreements page: ending before the end date sends a request the other side must approve; to
@@ -706,7 +835,7 @@ test the natural end without waiting, move the agreement's `endDate` into the pa
 
 ```bash
 cd backend
-npm test              # unit tests (e.g. trust score rules) — no DB needed
+npm test              # unit tests (trust score rules, property-verification auto-checks) — no DB needed
 npm run test:smoke    # full E2E lifecycle — requires local MongoDB
 
 npx jest tests/demoLogin.e2e.test.js --runInBand   # guest demo accounts + reset-on-login
@@ -717,7 +846,11 @@ register → OTP → profile → property → document upload → OCR → admin 
 score → application → verification request → token access — against a **dedicated
 throwaway database** (`tenant-verification-smoke-test`, dropped before/after) with email
 mocked. It's the go-to regression check after cross-cutting changes. It does **not** yet
-cover the agreement end/rating lifecycle, which is verified manually.
+cover the agreement end/rating lifecycle or property verification, and because new properties
+now start hidden from tenants it needs updating (upload a bill, approve it as admin) before it
+passes end to end again. The property-verification flow is verified manually (see
+[Try the full flow](#7-try-the-full-flow)); its pure auto-check helpers are unit-tested in
+`src/services/__tests__/propertyVerificationService.test.js`.
 
 Frontend: `npm run build` (type-check + bundle) and `npm run lint` (oxlint). There are no
 frontend unit tests; UI flows are verified manually / via browser automation.
@@ -734,16 +867,22 @@ frontend unit tests; UI flows are verified manually / via browser automation.
   redacted from logs, never emailed.
 - **NoSQL-injection defense**: inbound `$`/`.` keys stripped in place (Express 5-compatible
   mongo-sanitize usage); strict string-type checks on credential fields.
-- **Uploads**: in-memory multer + magic-byte validation — extensions and mimetypes are never trusted.
+- **Uploads**: in-memory multer + magic-byte validation — extensions and mimetypes are never
+  trusted (documents, property images and house tax bills alike).
 - **helmet** defaults (CSP, HSTS, …), explicit **CORS allowlist**, **rate limits** on auth/OTP/chat/token-access.
 - **Least disclosure**: generic 404/410 responses on token access; OCR data never exposed
   via share links; email bodies carry no sensitive payloads.
+- **Property verification integrity**: the `verification` block can't be written from any request
+  body (stripped, including dotted paths), so landlords can't self-verify; admin decisions are
+  atomic and only valid from `pending`; unverified listings are 404 for everyone but the owner
+  and admins; tenant-facing responses never include the tax bill URL, OCR text, auto-checks or
+  review details.
 - **Agreement integrity**: end/approve/cancel/rate permissions are derived from the caller's
   user id against the agreement, never from client input; an early end can't happen without the
   other party's approval (the Rental history *Mark as completed* shortcut is blocked before the
   end date for the same reason).
-- **Auditability**: document decisions and share-link accesses land in `AuditLog`;
-  trust-score changes keep their reasons in `TrustScoreHistory`.
+- **Auditability**: document decisions, property verification uploads/decisions and share-link
+  accesses land in `AuditLog`; trust-score changes keep their reasons in `TrustScoreHistory`.
 
 ---
 
@@ -760,6 +899,31 @@ frontend unit tests; UI flows are verified manually / via browser automation.
 - **Data from the old end flow.** Agreements saved before the lifecycle feature may carry the old
   status `ended`, old `signatures` / `activatedAt` fields, or end requests in the old
   `requester`/`target` shape; migrate or clear them before relying on the new flow.
+- **Properties from before property verification.** They have no `verification` field and are
+  invisible to tenants until `npm run migrate:property-verification` runs (grandfather by default,
+  `-- --pending` to force review). Re-running it is safe — it only touches documents without a status.
+- **Tax-bill OCR.** Only JPG/PNG bills are accepted (tesseract.js can't read PDFs). OCR is English-only
+  unless `TAX_BILL_OCR_LANG` is set (e.g. `eng+guj`). Bills are scanned inside the upload request, so a
+  submission can take several seconds; OCR failures never block a submission.
+
+---
+
+## Known limitations
+
+These are deliberate follow-ups, not hidden behavior:
+
+- **Applications aren't gated server-side yet.** Only the UI hides *Apply* for unverified listings;
+  the apply endpoint should also reject properties whose verification status isn't `verified`.
+- **Seeds, demo accounts and the smoke test predate property verification.** They create properties
+  that start unverified (hidden from tenants), so seeded/demo listings must be marked verified and the
+  smoke test needs a bill-upload + admin-approval step.
+- **Tax bills use a public Cloudinary URL.** It is removed from every response except the owner's and
+  admins', but the asset itself isn't access-restricted; authenticated/private delivery is a
+  `cloudinaryService` change.
+- **No verified badge on search cards** (it appears on the listing detail page), and property verification
+  decisions send an in-app notification but no email.
+- **Tax-bill matching is heuristic.** OCR layouts differ per municipality and the auto-checks are advisory;
+  an admin always makes the final call against the image.
 
 ---
 
@@ -773,6 +937,7 @@ frontend unit tests; UI flows are verified manually / via browser automation.
 | backend | `npm run test:smoke` | End-to-end lifecycle suite (needs local MongoDB) |
 | backend | `npm run seed:properties` | Insert demo property listings |
 | backend | `npm run seed:demo` | Create/reset the public guest demo accounts and print their credentials |
+| backend | `npm run migrate:property-verification` | Backfill `verification` on pre-existing properties (grandfathered as verified; add `-- --pending` to force review) |
 | frontend | `npm run dev` | Vite dev server (HMR) |
 | frontend | `npm run build` | Type-check (`tsc -b`) + production bundle |
 | frontend | `npm run preview` | Serve the production build locally |

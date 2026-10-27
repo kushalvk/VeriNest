@@ -17,6 +17,7 @@ import ReceivedApplicationsPage from './pages/ReceivedApplicationsPage';
 import VerificationRequestsPage from './pages/VerificationRequestsPage';
 import VerificationAccessPage from './pages/VerificationAccessPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
+import AdminPropertiesPage from './pages/AdminPropertiesPage';
 import AdminTrustScorePage from './pages/AdminTrustScorePage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AgreementPage from './pages/AgreementPage';
@@ -57,58 +58,59 @@ function ProfileByRole() {
   if (role === 'tenant') return <TenantProfilePage />;
   if (role === 'landlord') return <LandlordProfilePage />;
   return (
-    <main className="flex items-center justify-center py-24">
-      <p className="text-ink-muted">Profiles are not available for your account type.</p>
-    </main>
+      <main className="flex items-center justify-center py-24">
+        <p className="text-ink-muted">Profiles are not available for your account type.</p>
+      </main>
   );
 }
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* one site-wide shell: Header + content + Footer on every route */}
-        <Route element={<AppShell />}>
-          {/* public */}
-          <Route path="/" element={<HomePage />} />
-          <Route path="/about" element={<AboutPage />} />
-          <Route path="/services" element={<ServicesPage />} />
-          <Route path="/contact" element={<ContactPage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/verify-otp" element={<OtpVerifyPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/properties" element={<PropertySearchPage />} />
-          <Route path="/properties/:id" element={<PropertyDetailPage />} />
-          {/* public by design: access controlled entirely by the token */}
-          <Route path="/verify/:token" element={<VerificationAccessPage />} />
+      <BrowserRouter>
+        <Routes>
+          {/* one site-wide shell: Header + content + Footer on every route */}
+          <Route element={<AppShell />}>
+            {/* public */}
+            <Route path="/" element={<HomePage />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/services" element={<ServicesPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/verify-otp" element={<OtpVerifyPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/properties" element={<PropertySearchPage />} />
+            <Route path="/properties/:id" element={<PropertyDetailPage />} />
+            {/* public by design: access controlled entirely by the token */}
+            <Route path="/verify/:token" element={<VerificationAccessPage />} />
 
-          {/* authenticated */}
-          <Route element={<RequireAuth />}>
-            {/* one-time role picker for first-time Google accounts */}
-            <Route path="/select-role" element={<SelectRolePage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/profile" element={<ProfileByRole />} />
-            <Route path="/documents" element={<RequireRole role="tenant"><DocumentsPage /></RequireRole>} />
-            <Route path="/my-properties" element={<RequireRole role="landlord"><LandlordPropertiesPage /></RequireRole>} />
-            <Route path="/my-applications" element={<RequireRole role="tenant"><MyApplicationsPage /></RequireRole>} />
-            <Route path="/received-applications" element={<RequireRole role="landlord"><ReceivedApplicationsPage /></RequireRole>} />
-            <Route path="/verification-requests" element={<RequireRole role="tenant"><VerificationRequestsPage /></RequireRole>} />
-            <Route path="/admin" element={<RequireRole role="admin"><AdminDashboardPage /></RequireRole>} />
-            <Route path="/admin/trust-score" element={<RequireRole role="admin"><AdminTrustScorePage /></RequireRole>} />
-            <Route path="/admin/users" element={<RequireRole role="admin"><AdminUsersPage /></RequireRole>} />
-            {/* party checks happen in the controller/page by identity */}
-            <Route path="/agreements/:id" element={<AgreementPage />} />
-            <Route path="/agreements" element={<ActiveAgreementsPage />} />
-            <Route path="/rental-history" element={<RentalHistoryPage />} />
+            {/* authenticated */}
+            <Route element={<RequireAuth />}>
+              {/* one-time role picker for first-time Google accounts */}
+              <Route path="/select-role" element={<SelectRolePage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/profile" element={<ProfileByRole />} />
+              <Route path="/documents" element={<RequireRole role="tenant"><DocumentsPage /></RequireRole>} />
+              <Route path="/my-properties" element={<RequireRole role="landlord"><LandlordPropertiesPage /></RequireRole>} />
+              <Route path="/my-applications" element={<RequireRole role="tenant"><MyApplicationsPage /></RequireRole>} />
+              <Route path="/received-applications" element={<RequireRole role="landlord"><ReceivedApplicationsPage /></RequireRole>} />
+              <Route path="/verification-requests" element={<RequireRole role="tenant"><VerificationRequestsPage /></RequireRole>} />
+              <Route path="/admin" element={<RequireRole role="admin"><AdminDashboardPage /></RequireRole>} />
+              <Route path="/admin/properties" element={<RequireRole role="admin"><AdminPropertiesPage /></RequireRole>} />
+              <Route path="/admin/trust-score" element={<RequireRole role="admin"><AdminTrustScorePage /></RequireRole>} />
+              <Route path="/admin/users" element={<RequireRole role="admin"><AdminUsersPage /></RequireRole>} />
+              {/* party checks happen in the controller/page by identity */}
+              <Route path="/agreements/:id" element={<AgreementPage />} />
+              <Route path="/agreements" element={<ActiveAgreementsPage />} />
+              <Route path="/rental-history" element={<RentalHistoryPage />} />
+            </Route>
+
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
-
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
   );
 }
 

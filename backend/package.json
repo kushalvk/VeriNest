@@ -9,7 +9,8 @@
     "seed:properties": "node src/scripts/seedProperties.js",
     "seed:demo": "node src/scripts/seedDemo.js",
     "test": "jest src",
-    "test:smoke": "jest tests/smoke.e2e.test.js --runInBand"
+    "test:smoke": "jest tests/smoke.e2e.test.js --runInBand",
+    "migrate:property-verification": "node src/scripts/migratePropertyVerification.js"
   },
   "keywords": [],
   "author": "",

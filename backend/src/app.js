@@ -21,6 +21,7 @@ const agreementRoutes = require('./routes/agreementRoutes');
 const rentalHistoryRoutes = require('./routes/rentalHistoryRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const errorHandler = require('./middlewares/errorHandler');
+const adminPropertyRoutes = require('./routes/adminPropertyRoutes');
 
 const app = express();
 
@@ -98,6 +99,7 @@ apiRouter.use('/landlord-profile', landlordProfileRoutes);
 apiRouter.use('/documents', documentRoutes);
 apiRouter.use('/admin/documents', adminDocumentRoutes);
 apiRouter.use('/admin/users', adminUserRoutes);
+apiRouter.use('/admin/properties', adminPropertyRoutes);
 apiRouter.use('/properties', propertyRoutes);
 apiRouter.use('/applications', applicationRoutes);
 apiRouter.use('/verification-requests', verificationRequestRoutes);
